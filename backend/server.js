@@ -13,12 +13,15 @@ const path = require("path");
 const { Console } = require("console");
 const PORT = process.env.PORT || 5000; // default port
 
+// Global state variables
 const usersScores = {}; // Stores scores { "twitchUserID": score }
+let triviaActive = false; // ✅ Trivia is inactive until manually started
+let triviaRoundEndTime = 0; // Prevents countdown updates during an active trivia round
+let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
+let questionInProgress = false; // ✅ Prevents multiple questions at once
+let usedQuestions = []; // Avoiding Repeat Questions
 
-let countdownInterval = null; // ✅ Declare countdown interval at the top
-let triviaInterval = null; // ✅ Declare this at the top
-
-
+// Initialize Express app
 const app = express();
 app.use(express.static(path.join(__dirname, "frontend"))); // Serve frontend via Express
 app.use(cors());
@@ -69,68 +72,16 @@ function generateToken() {
   );
 }
 
-// Trivia Start Functionality
-let triviaActive = false; // ✅ Trivia is inactive until manually started.
-let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
-
-app.post("/start-trivia", async (req, res) => {
-  if (triviaActive) {
-      console.log("⚠️ Trivia is already running. Ignoring start request.");
-      return res.json({ success: false, message: "Trivia is already running!" });
-  }
-
-  triviaActive = true;
-
-  const token = generateToken();
-  const startPayload = {
-      target: ["broadcast"],
-      broadcaster_id: CHANNEL_ID.toString(),
-      is_global_broadcast: false,
-      message: JSON.stringify({ type: "TRIVIA_START" }),
-  };
-
-  try {
-      // ✅ Broadcast TRIVIA_START before setting next question time
-      await axios.post("https://api.twitch.tv/helix/extensions/pubsub", startPayload, {
-          headers: {
-              Authorization: `Bearer ${token}`,
-              "Client-Id": EXT_CLIENT_ID,
-              "Content-Type": "application/json",
-          },
-      });
-
-      console.log("🚀 TRIVIA_START event broadcasted!");
-
-      // ✅ Ensure trivia settings exist before setting the countdown
-      if (!triviaSettings || typeof triviaSettings.intervalTime !== "number") {
-          console.error("❌ Invalid trivia settings! Using default interval time.");
-          nextQuestionTime = Date.now() + 60000; // ✅ Default to 60 seconds if no valid setting
-      } else {
-          nextQuestionTime = Date.now() + triviaSettings.intervalTime;
-      }
-
-      console.log(`⏳ First trivia question will be in ${Math.round((nextQuestionTime - Date.now()) / 1000)} seconds.`);
-
-      // ✅ Send response to the client only once
-      res.json({ success: true, message: "Trivia started!" });
-
-  } catch (error) {
-      console.error("❌ Error broadcasting TRIVIA_START:", error);
-
-      // ✅ Reset trivia state if it fails to start
-      triviaActive = false;
-      return res.status(500).json({ success: false, error: "Failed to start trivia." });
-  }
-});
-
-
 // ✅ Timing Constants
 const QUESTION_DURATION = 30000; // 30 seconds (legacy fallback)
 const NEXT_QUESTION_INTERVAL = 600000; // 10 minutes
 let triviaQuestions = [];
 
-// NEW: Flag to suppress countdown updates during an active trivia round.
-let triviaRoundEndTime = 0;
+// ✅ Trivia Settings
+let triviaSettings = {
+  answerTime: 30000,     // Default 30 seconds
+  intervalTime: 600000,  // Default 10 minutes
+};
 
 // ✅ Helper: Shuffle Array
 function shuffleArray(array) {
@@ -141,10 +92,57 @@ function shuffleArray(array) {
   return array;
 }
 
-let questionInProgress = false; // ✅ Prevents multiple questions at once
-let usedQuestions = []; // Avoding Repeat Questions
+// ✅ IMPROVED: Start Trivia Endpoint
+app.post("/start-trivia", async (req, res) => {
+  if (triviaActive) {
+      console.log("⚠️ Trivia is already running. Ignoring start request.");
+      return res.json({ success: false, message: "Trivia is already running!" });
+  }
 
+  try {
+      // Set triviaActive first to prevent race conditions
+      triviaActive = true;
 
+      const token = generateToken();
+      const startPayload = {
+          target: ["broadcast"],
+          broadcaster_id: CHANNEL_ID.toString(),
+          is_global_broadcast: false,
+          message: JSON.stringify({ 
+              type: "TRIVIA_START",
+              intervalTime: triviaSettings.intervalTime
+          }),
+      };
+
+      // Send the TRIVIA_START event
+      await axios.post("https://api.twitch.tv/helix/extensions/pubsub", startPayload, {
+          headers: {
+              Authorization: `Bearer ${token}`,
+              "Client-Id": EXT_CLIENT_ID,
+              "Content-Type": "application/json",
+          },
+      });
+
+      console.log("🚀 TRIVIA_START event broadcasted!");
+
+      // Set next question time AFTER broadcasting
+      const intervalTime = triviaSettings?.intervalTime || 600000;
+      nextQuestionTime = Date.now() + intervalTime;
+
+      console.log(`⏳ First trivia question will be in ${Math.round((nextQuestionTime - Date.now()) / 1000)} seconds.`);
+      
+      // Send response to client
+      return res.json({ success: true, message: "Trivia started!" });
+
+  } catch (error) {
+      console.error("❌ Error broadcasting TRIVIA_START:", error);
+      // Reset trivia state if it fails to start
+      triviaActive = false;
+      return res.status(500).json({ success: false, error: "Failed to start trivia." });
+  }
+});
+
+// ✅ IMPROVED: Send Trivia Question
 async function sendTriviaQuestion(channelId) {
   if (!triviaActive) {
       console.log("⏳ Trivia is inactive. Waiting for Start command.");
@@ -162,16 +160,26 @@ async function sendTriviaQuestion(channelId) {
   }
 
   try {
+      // Mark that a question is in progress
+      questionInProgress = true;
+      
       console.log("🧠 Selecting a trivia question...");
       const questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
+      
+      // Ensure we have valid question data
+      if (!questionObj || !questionObj.question || !questionObj.choices || !questionObj.correctAnswer) {
+          console.error("❌ Invalid question object:", questionObj);
+          questionInProgress = false; // Reset flag on error
+          return;
+      }
+      
       const shuffledChoices = shuffleArray([...questionObj.choices]);
 
+      // Get timing settings with fallbacks
       const answerTime = triviaSettings?.answerTime || 30000; // Default 30s
       const intervalTime = triviaSettings?.intervalTime || 600000; // Default 10 min
 
       console.log(`⏳ Current trivia settings → Answer Time: ${answerTime}ms, Interval: ${intervalTime}ms`);
-
-      questionInProgress = true;
 
       const pubsubPayload = {
           target: ["broadcast"],
@@ -203,28 +211,22 @@ async function sendTriviaQuestion(channelId) {
 
       console.log(`✅ Trivia question sent to channel ${channelId}`);
 
-      // ✅ Only start the interval countdown **AFTER** the answer time + buffer
+      // Set round end time and schedule the next question
       triviaRoundEndTime = Date.now() + answerTime + 5000; // Extra 5s buffer
 
       setTimeout(() => {
           questionInProgress = false;
-          nextQuestionTime = Date.now() + intervalTime; // ✅ Now start the interval countdown
+          nextQuestionTime = Date.now() + intervalTime; 
           console.log(`⏳ Next trivia question in: ${intervalTime / 1000} seconds`);
-      }, answerTime + 5000); // Wait until the question ends before setting `nextQuestionTime`
+      }, answerTime + 5000);
       
   } catch (error) {
       console.error("❌ Error sending PubSub message:", error.response?.data || error.message);
-      questionInProgress = false;
+      questionInProgress = false; // Always reset the flag on error
   }
 }
 
-// ✅ Trivia Settings
-let triviaSettings = {
-  answerTime: 30000,     // Default 30 seconds
-  intervalTime: 600000,  // Default 10 minutes
-};
-
-// ✅ CSV Upload Route
+// ✅ IMPROVED: CSV Upload Route
 const upload = multer({ dest: "uploads/" });
 app.post("/upload-csv", upload.single("file"), (req, res) => {
   try {
@@ -233,24 +235,40 @@ app.post("/upload-csv", upload.single("file"), (req, res) => {
     const file = req.file.path;
     const lines = fs.readFileSync(file, "utf-8").split("\n");
 
-    triviaQuestions = lines.reduce((questions, rawLine) => {
+    // Better validation and error handling for CSV
+    triviaQuestions = lines.reduce((questions, rawLine, index) => {
       const line = rawLine.trim();
       if (!line) return questions; // skip empty lines
 
       const q = line.replace(/\r/g, "").split(",");
+      
       // Ensure at least 5 columns: question + 4 choices
-      if (q.length < 5) return questions;
+      if (q.length < 5) {
+        console.warn(`❌ Line ${index + 1}: Skipping invalid line (not enough columns)`);
+        return questions;
+      }
 
-      questions.push({
-        question: q[0],
-        choices: [q[1], q[2], q[3], q[4]], // no shuffling here
-        correctAnswer: q[1],
-      });
+      // Add question with stricter validation
+      try {
+        questions.push({
+          question: q[0],
+          choices: [q[1], q[2], q[3], q[4]], // no shuffling here
+          correctAnswer: q[1],
+        });
+      } catch (error) {
+        console.error(`❌ Line ${index + 1}: Error parsing question:`, error);
+      }
+      
       return questions;
     }, []);
 
-    console.log("✅ Trivia questions updated:", triviaQuestions);
-    res.json({ message: "✅ Trivia questions uploaded successfully!" });
+    console.log(`✅ Trivia questions updated: ${triviaQuestions.length} valid questions loaded`);
+    
+    if (triviaQuestions.length === 0) {
+      return res.status(400).json({ error: "No valid questions found in CSV!" });
+    }
+    
+    res.json({ message: `✅ ${triviaQuestions.length} trivia questions uploaded successfully!` });
   } catch (error) {
     console.error("❌ Error processing CSV:", error);
     res.status(500).json({ error: "Failed to upload trivia questions." });
@@ -322,27 +340,20 @@ app.get("/trivia", async (req, res) => {
   }
 });
 
-// ✅ Broadcast Countdown Update to Twitch PubSub
+// ✅ IMPROVED: Broadcast Countdown Update to Twitch PubSub
 async function sendCountdownUpdate() {
-  // ✅ Stop countdown updates during an active trivia round
+  // Don't send updates if trivia is inactive or during an active question
   if (!triviaActive || Date.now() < triviaRoundEndTime) {
-      console.log("⚠️ Countdown suppressed during active trivia round.");
       return;
   }
 
-  // ✅ If the answer time just finished, set `nextQuestionTime` to start now
+  // If nextQuestionTime isn't set or has passed, don't send updates
   if (!nextQuestionTime || nextQuestionTime < Date.now()) {
-      console.log("⏳ Answer time just ended, starting interval countdown now.");
-      nextQuestionTime = Date.now() + triviaSettings.intervalTime;
+      return;
   }
 
   const timeRemaining = nextQuestionTime - Date.now();
-  if (timeRemaining <= 0) {
-      console.log("⏳ Countdown reached 0! Sending trivia question...");
-      sendTriviaQuestion(CHANNEL_ID);
-      return;
-  }
-
+  
   try {
       const token = generateToken();
       const countdownPayload = {
@@ -456,24 +467,13 @@ app.get("/export-scores", (req, res) => {
   res.send(csvContent);
 });
 
-// ✅ End Trivia Immediately (Single route)
+// ✅ IMPROVED: End Trivia Immediately
 app.post("/end-trivia", (req, res) => {
   console.log("🛑 Trivia manually ended!");
 
   triviaActive = false;
   triviaRoundEndTime = 0;
-  nextQuestionTime = 0;
-
-  // ✅ Ensure timers are cleared safely
-  if (countdownInterval) {
-      clearInterval(countdownInterval);
-      countdownInterval = null;
-  }
-
-  if (triviaInterval) {
-      clearInterval(triviaInterval);
-      triviaInterval = null; // ✅ Prevent errors
-  }
+  nextQuestionTime = null;
 
   const token = generateToken();
   const endPayload = {
@@ -501,6 +501,7 @@ app.post("/end-trivia", (req, res) => {
   });
 });
 
+// ✅ IMPROVED: Main countdown and question timing interval
 setInterval(() => {
   if (!triviaActive || !nextQuestionTime) {
       return;
@@ -509,70 +510,22 @@ setInterval(() => {
   const now = Date.now();
   let timeRemaining = nextQuestionTime - now;
 
-  console.log(`⏳ Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
+  // For logging, only show every 10 seconds to reduce spam
+  if (timeRemaining % 10000 < 1000) {
+    console.log(`⏳ Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
+  }
 
   // ✅ Update countdown UI
   sendCountdownUpdate();
 
   // ✅ When time runs out, request the next question
-  if (timeRemaining <= 0) {
+  if (timeRemaining <= 0 && !questionInProgress) {
       console.log("⏳ Countdown reached 0! Sending trivia question...");
-      requestNextQuestion();
+      sendTriviaQuestion(CHANNEL_ID);
   }
-}, 1000); // ✅ Runs once per second, handles both countdown & question timing
+}, 1000); // ✅ Runs once per second
 
-// ✅ Automatically transition to the next trivia question
-function requestNextQuestion() {
-  console.log("🚀 Requesting the next trivia question...");
-
-  fetch(`http://localhost:${PORT}/get-next-question`)
-      .then(response => response.json())
-      .then(data => {
-          if (data.error) {
-              console.warn("⏳ Next question is not ready yet, waiting...");
-              return; // ✅ Prevents unnecessary API calls
-          }
-
-          console.log("📩 Received next question:", data);
-
-          // ✅ Send the next question via PubSub so the frontend can handle it
-          const token = generateToken();
-          const pubsubPayload = {
-              target: ["broadcast"],
-              broadcaster_id: CHANNEL_ID.toString(),
-              is_global_broadcast: false,
-              message: JSON.stringify({
-                  type: "TRIVIA_QUESTION",
-                  question: data.question,
-                  choices: data.choices,
-                  correctAnswer: data.correctAnswer,
-                  duration: triviaSettings.answerTime,
-              }),
-          };
-
-          return axios.post(
-              "https://api.twitch.tv/helix/extensions/pubsub",
-              pubsubPayload,
-              {
-                  headers: {
-                      Authorization: `Bearer ${token}`,
-                      "Client-Id": EXT_CLIENT_ID,
-                      "Content-Type": "application/json",
-                  },
-              }
-          );
-      })
-      .then(() => {
-          console.log("✅ Trivia question sent to channel", CHANNEL_ID);
-          // ✅ Update next question time to prevent duplicate questions
-          nextQuestionTime = Date.now() + triviaSettings.intervalTime;
-      })
-      .catch(error => {
-          console.error("❌ Error broadcasting trivia question:", error);
-      });
-}
-
-// ✅ Get-Next-Question Endpoint (Prevent Early Questions)
+// ✅ IMPROVED: Get-Next-Question Endpoint
 app.get("/get-next-question", (req, res) => {
   console.log("📢 /get-next-question endpoint called!");
 
@@ -581,30 +534,47 @@ app.get("/get-next-question", (req, res) => {
       return res.json({ error: "Trivia is not active." });
   }
 
+  // Check if we need to wait before sending the next question
   const timeRemaining = nextQuestionTime - Date.now();
-
   if (timeRemaining > 0) {
       console.log(`⏳ Next question not ready yet! Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
-      return res.json({ message: "Next question not ready yet.", timeRemaining });
+      return res.json({ error: "Next question not ready yet.", timeRemaining });
   }
 
+  // Check if questions are available
   if (!triviaQuestions || triviaQuestions.length === 0) {
       console.error("❌ No trivia questions available!");
       return res.status(400).json({ error: "No trivia questions available." });
   }
 
-  // ✅ Ensure a question is properly selected
-  let questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
+  // Prevent overlap with ongoing questions
+  if (questionInProgress) {
+      console.warn("⚠️ A question is already in progress!");
+      return res.json({ error: "A question is already in progress." });
+  }
 
+  // Get a random question
+  let questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
+  
+  // Verify the question has all required fields
   if (!questionObj || !questionObj.question || !questionObj.choices || !questionObj.correctAnswer) {
       console.error("❌ Invalid question object:", questionObj);
       return res.status(500).json({ error: "Invalid question data." });
   }
+  
+  let shuffledChoices = shuffleArray([...questionObj.choices]);
 
-  console.log("📩 Sending next trivia question:", questionObj);
-  res.json(questionObj); // ✅ Send trivia question as JSON
+  // Return the question with shuffled choices
+  const responseObj = {
+      question: questionObj.question,
+      choices: shuffledChoices,
+      correctAnswer: questionObj.correctAnswer,
+      duration: triviaSettings?.answerTime || 30000
+  };
+
+  console.log("📩 Sending next trivia question");
+  res.json(responseObj);
 });
 
 // ✅ Start Server
 app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
-

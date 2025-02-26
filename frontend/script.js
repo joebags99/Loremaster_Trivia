@@ -2,8 +2,12 @@
 let userId = null;             // Twitch user ID
 let questionStartTime = null;  // Timestamp when the current trivia question is shown
 let triviaActive = false;      // Flag indicating an active trivia round
-let nextQuestionTime = null;   // 🔥 Track next trivia question time
-let triviaSettings = []; //
+let nextQuestionTime = null;   // Track next trivia question time
+let questionRequested = false; // Prevents multiple requests
+let triviaSettings = {
+    answerTime: 30000,     // Default 30 seconds
+    intervalTime: 600000   // Default 10 minutes
+};
 
 // Retrieve Twitch User ID on authorization
 window.Twitch.ext.onAuthorized((auth) => {
@@ -23,6 +27,36 @@ const countdownTimer = document.getElementById("countdown-timer");
 // ✅ Track whether PubSub is updating the countdown
 let countdownUpdatedByPubSub = false;
 
+// ✅ UI State Management Function
+function setUIState(state) {
+    console.log(`🎭 Setting UI state to: ${state}`);
+    
+    // Hide all screens first
+    document.getElementById("waiting-screen").style.display = "none";
+    document.getElementById("quiz-container").style.display = "none";
+    document.getElementById("trivia-ended-screen").style.display = "none";
+    
+    // Show the appropriate screen
+    switch (state) {
+        case "waiting":
+            document.getElementById("waiting-screen").style.display = "flex";
+            document.getElementById("waiting-text").textContent = "Trivia has not started yet.";
+            countdownTimer.style.display = "none";
+            break;
+        case "countdown":
+            document.getElementById("waiting-screen").style.display = "flex";
+            document.getElementById("waiting-text").textContent = "Next question in:";
+            countdownTimer.style.display = "inline";
+            break;
+        case "question":
+            document.getElementById("quiz-container").style.display = "flex";
+            break;
+        case "ended":
+            document.getElementById("trivia-ended-screen").style.display = "block";
+            break;
+    }
+}
+
 // ✅ Listen for Twitch PubSub Messages
 window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
     console.log("📩 Received broadcast:", message);
@@ -32,30 +66,35 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
 
         switch (data.type) {
             case "SETTINGS_UPDATE":
-                console.log("Updating Settings...");
-                triviaSettings = data;
-                console.log(triviaSettings);
+                console.log("⚙️ Updating Settings:", data);
+                triviaSettings.answerTime = data.answerTime || triviaSettings.answerTime;
+                triviaSettings.intervalTime = data.intervalTime || triviaSettings.intervalTime;
                 break;
 
             case "TRIVIA_START":
-                console.log("🚀 Trivia has started! Switching to 'Next question in:' screen...");
-                console.log(triviaSettings);
-                transitionToCountdown(triviaSettings.intervalTime);
+                console.log("🚀 Trivia has started!");
+                triviaActive = true;
+                // Use the intervalTime from settings or data
+                const intervalTime = data.intervalTime || triviaSettings.intervalTime || 600000;
+                nextQuestionTime = Date.now() + intervalTime;
+                setUIState("countdown");
+                updateCountdown(intervalTime);
                 break;
 
             case "TRIVIA_QUESTION":
-                console.log("🎯 TRIVIA_QUESTION received! Displaying question now.");
-                console.log("bullshit"+triviaSettings);
-                console.log("bullshit data"+data);
+                console.log("🎯 TRIVIA_QUESTION received!");
+                questionRequested = false; // Reset request flag
                 displayQuestion(data);
                 break;
 
             case "COUNTDOWN_UPDATE":
-                console.log(`⏳ COUNTDOWN_UPDATE received! Time remaining: ${data.timeRemaining / 1000} seconds`);
-                countdownUpdatedByPubSub = true; // ✅ Prevent duplicate updates
+                console.log(`⏳ COUNTDOWN_UPDATE: ${Math.round(data.timeRemaining / 1000)}s remaining`);
+                // Set flag to prevent local updates conflicting with server updates
+                countdownUpdatedByPubSub = true;
+                nextQuestionTime = Date.now() + data.timeRemaining;
                 updateCountdown(data.timeRemaining);
                 
-                // ✅ Reset the flag after 2 seconds to allow local updates if needed
+                // Reset the flag after a delay
                 setTimeout(() => {
                     countdownUpdatedByPubSub = false;
                 }, 2000);
@@ -63,7 +102,9 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
 
             case "TRIVIA_END":
                 console.log("⛔ Trivia has been ended by the broadcaster.");
-                transitionToWaitingScreen();
+                triviaActive = false;
+                nextQuestionTime = null;
+                setUIState("ended");
                 break;
 
             default:
@@ -75,174 +116,91 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
     }
 });
 
-// ✅ Transition Viewer to "Next Question In" Countdown Screen
-function transitionToCountdown(intervalTime) {
-    console.log("🎭 Transitioning to 'Next question in:' countdown screen...");
-
-    // ✅ Ensure the waiting screen is shown with correct text
-    const waitingText = document.getElementById("waiting-text");
-    document.getElementById("waiting-screen").style.display = "flex";
-    waitingText.textContent = "Next question in:";
-    countdownTimer.style.display = "inline"; // Show countdown
-
-    // ✅ Hide other screens
-    document.getElementById("quiz-container").style.display = "none";
-    document.getElementById("trivia-ended-screen").style.display = "none";
-
-    triviaActive = true; // ✅ Trivia is now running
-    console.log("im here...");
-
-    // ✅ Validate & Set Next Question Time
-    if (!intervalTime || isNaN(intervalTime)) {
-        console.error("❌ Invalid intervalTime received:", intervalTime);
-        intervalTime = triviaSettings?.intervalTime || 600000; // ✅ Fallback to default 10 minutes
-    }
-
-    nextQuestionTime = Date.now() + intervalTime;
-    updateCountdown(intervalTime); // ✅ Start countdown immediately
-}
-
-// ✅ Transition Back to "Trivia has not started yet."
-function transitionToWaitingScreen() {
-    console.log("↩ Returning to 'Trivia has not started yet.' screen...");
-
-    const waitingText = document.getElementById("waiting-text");
-
-    document.getElementById("waiting-screen").style.display = "flex";
-    waitingText.textContent = "Trivia has not started yet.";
-    countdownTimer.style.display = "none"; // Hide countdown
-
-    document.getElementById("quiz-container").style.display = "none";
-    document.getElementById("trivia-ended-screen").style.display = "none";
-
-    triviaActive = false; // ✅ Reset trivia state
-    nextQuestionTime = null; // ✅ Clear countdown tracking
-}
-
-// ✅ Modified updateCountdown function
+// ✅ Improved countdown update function
 function updateCountdown(timeRemaining) {
     if (!countdownTimer || isNaN(timeRemaining) || timeRemaining <= 0) {
-        countdownTimer.textContent = "0:00"; 
+        if (countdownTimer) {
+            countdownTimer.textContent = "0:00";
+        }
         return;
     }
     
+    // Format time as MM:SS
     let minutes = Math.floor(timeRemaining / 60000);
     let seconds = Math.floor((timeRemaining % 60000) / 1000);
     
-    if (!countdownUpdatedByPubSub) { // ✅ Only update if PubSub isn’t handling it
-        countdownTimer.style.display = "inline";
-        countdownTimer.textContent = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-    }
+    countdownTimer.style.display = "inline";
+    countdownTimer.textContent = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
 }
 
-let questionRequested = false; // ✅ Prevents multiple requests
-
-// ✅ Start Continuous Countdown Timer
+// ✅ Improved interval timer for checking question timing
 setInterval(() => {
-    if (!triviaActive || !nextQuestionTime || countdownUpdatedByPubSub) return; // ✅ Prevents conflict with PubSub updates
+    // Skip if trivia isn't active or if PubSub recently updated the countdown
+    if (!triviaActive || !nextQuestionTime || countdownUpdatedByPubSub) {
+        return;
+    }
 
     const now = Date.now();
-    let timeRemaining = nextQuestionTime - now;
+    const timeRemaining = nextQuestionTime - now;
 
-    if (isNaN(timeRemaining) || timeRemaining <= 0) {
-        if (!questionRequested) { // ✅ Prevent duplicate requests
-            console.log("⏳ Countdown expired, switching to question...");
-            countdownTimer.textContent = "0:00";
-            questionRequested = true; // ✅ Stops further requests
+    // Update the local countdown
+    updateCountdown(timeRemaining);
 
-            // ✅ Fetch the next trivia question
-            fetch("/get-next-question")
+    // Check if it's time to request the next question
+    if (timeRemaining <= 0 && !questionRequested) {
+        console.log("⏳ Countdown reached 0! Requesting next question...");
+        questionRequested = true;
+        
+        fetch("/get-next-question")
             .then(response => response.json())
             .then(data => {
-                if (!data.question || !data.choices || !data.correctAnswer) {
-                    console.warn(`⚠️ Trivia question not ready yet. Waiting... (${Math.round(data.timeRemaining / 1000)}s left)`);
-
-                    // ✅ Add a delay before retrying (instead of resetting immediately)
+                if (data.error) {
+                    console.warn(`⚠️ ${data.error}`);
+                    // Reset the request flag after a short delay to prevent spam
                     setTimeout(() => {
-                        questionRequested = false; // ✅ Allows retry only after a delay
-                    }, 5000); // ✅ Retry every 5 seconds
-
+                        questionRequested = false;
+                    }, 5000);
                     return;
                 }
-
-                console.log("📩 Received next question:", data);
-                displayQuestion(data); // ✅ Display the next trivia question
+                
+                // If we got a valid question, display it
+                displayQuestion(data);
             })
             .catch(error => {
                 console.error("❌ Error fetching next question:", error);
-
-                // ✅ Add a delay before retrying on error
+                // Reset the request flag to allow retry
                 setTimeout(() => {
                     questionRequested = false;
                 }, 5000);
             });
-        }
-        return;
     }
+}, 1000);
 
-    // ✅ Ensure countdown is updated live every second **only if PubSub hasn't updated recently**
-    if (!countdownUpdatedByPubSub) {
-        updateCountdown(timeRemaining);
-    }
-
-}, 1000); // ✅ Ensures the countdown updates every second
-
-// ✅ Transition Viewer to Trivia Screen (Displays Question & Choices)
-function transitionToTrivia() {
-    console.log("🎭 Transitioning to trivia question screen...");
-    
-    document.getElementById("waiting-screen").style.display = "none"; // Hide waiting screen
-    document.getElementById("quiz-container").style.display = "flex"; // Show trivia screen
-    document.getElementById("trivia-ended-screen").style.display = "none"; // Hide ended screen
-
-    triviaActive = true; // ✅ Mark that trivia is active
-}
-
-// ✅ Start Trivia Timer & Reveal Answers
-function startTriviaTimer(duration, correctAnswer) {
-    console.log(`⏳ Starting trivia timer for duration: ${duration}ms`);
-
-    setTimeout(() => {
-        console.log("⌛ Time's up! Revealing correct answer...");
-        
-        // ✅ Mark correct and incorrect answers
-        const buttons = document.querySelectorAll(".choice-button");
-        buttons.forEach((btn) => {
-            if (btn.textContent === correctAnswer) {
-                btn.classList.add("correct"); // ✅ Highlight correct answer
-            } else if (btn.dataset.selected === "true") {
-                btn.classList.remove("selected");
-                btn.classList.add("wrong"); // ❌ Mark incorrect answer
-            } else {
-                btn.classList.add("wrong");
-            }
-            btn.disabled = true; // ✅ Disable all buttons
-        });
-
-        console.log("🎭 Answer reveal complete. Returning to countdown screen in 5 seconds...");
-
-        // ✅ After 5 seconds, transition back to waiting screen
-        setTimeout(transitionToCountdown, 5000);
-    }, duration);
-}
-
-// ✅ Display Trivia Question
+// ✅ Improved displayQuestion function
 function displayQuestion(data) {
     console.log("📢 displayQuestion() called with data:", data);
-    if (!data.question || !data.choices || !data.correctAnswer || !data.duration) {
+    
+    if (!data.question || !data.choices || !data.correctAnswer) {
         console.error("❌ Missing required trivia data fields:", data);
         return;
     }
 
+    // Calculate duration with fallback
+    const duration = data.duration || triviaSettings.answerTime || 30000;
+    
     triviaActive = true;
     questionStartTime = Date.now();
-    console.log("📢 Question started at:", questionStartTime);
-
+    questionRequested = false; // Reset flag
+    
+    // Update UI
     questionText.textContent = data.question;
     choicesContainer.innerHTML = "";
+    
+    // Reset timer bar
     timerBar.style.transition = "none";
     timerBar.style.width = "100%";
 
+    // Create buttons for each choice
     data.choices.forEach((choice) => {
         const button = document.createElement("button");
         button.classList.add("choice-button");
@@ -251,13 +209,75 @@ function displayQuestion(data) {
         choicesContainer.appendChild(button);
     });
 
+    // Start timer animation
     setTimeout(() => {
-        timerBar.style.transition = `width ${data.duration / 1000}s linear`;
+        timerBar.style.transition = `width ${duration / 1000}s linear`;
         timerBar.style.width = "0%";
     }, 100);
 
-    transitionToTrivia();
-    startTriviaTimer(data.duration, data.correctAnswer);
+    // Show the question screen
+    setUIState("question");
+    
+    // Start the answer timer
+    startTriviaTimer(duration, data.correctAnswer);
+}
+
+// ✅ Improved transitionToCountdown function
+function transitionToCountdown(intervalTime) {
+    console.log("🎭 Transitioning to countdown screen...");
+    
+    // Validate interval time with fallbacks
+    if (!intervalTime || isNaN(intervalTime)) {
+        intervalTime = triviaSettings.intervalTime || 600000; // Default to 10 minutes
+    }
+    
+    triviaActive = true;
+    nextQuestionTime = Date.now() + intervalTime;
+    
+    // Set UI state and start countdown
+    setUIState("countdown");
+    updateCountdown(intervalTime);
+}
+
+// ✅ Improved startTriviaTimer function
+function startTriviaTimer(duration, correctAnswer) {
+    console.log(`⏳ Starting trivia timer for duration: ${duration}ms`);
+    
+    // Use the current question timestamp to verify timer validity
+    const currentQuestionTime = questionStartTime;
+    
+    setTimeout(() => {
+        // Check if we're still showing the same question
+        if (questionStartTime !== currentQuestionTime) {
+            console.log("⚠️ Question changed, not revealing answers");
+            return;
+        }
+        
+        console.log("⌛ Time's up! Revealing correct answer...");
+        
+        // Mark correct and incorrect answers
+        const buttons = document.querySelectorAll(".choice-button");
+        buttons.forEach((btn) => {
+            if (btn.textContent === correctAnswer) {
+                btn.classList.add("correct");
+            } else if (btn.dataset.selected === "true") {
+                btn.classList.remove("selected");
+                btn.classList.add("wrong");
+            } else {
+                btn.classList.add("wrong");
+            }
+            btn.disabled = true;
+        });
+
+        console.log("🔄 Returning to countdown screen in 5 seconds...");
+
+        // After 5 seconds, transition back to countdown screen
+        setTimeout(() => {
+            // Transition to countdown with next interval
+            const nextInterval = triviaSettings.intervalTime || 600000;
+            transitionToCountdown(nextInterval);
+        }, 5000);
+    }, duration);
 }
 
 // ✅ Display User Score
@@ -280,16 +300,20 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
     
     console.log("User selected:", selectedChoice, " | Correct answer:", correctAnswer);
     
+    // Disable all buttons to prevent multiple selections
     const buttons = document.querySelectorAll(".choice-button");
     buttons.forEach((btn) => btn.disabled = true);
     
+    // Mark the selected button
     button.classList.add("selected");
     button.dataset.selected = "true";
     button.dataset.isCorrect = selectedChoice === correctAnswer ? "true" : "false";
 
+    // Calculate response time
     const answerTime = Date.now() - questionStartTime;
     console.log(`📩 User ${userId} answered in ${answerTime}ms`);
 
+    // Submit answer to server
     fetch("/submit-answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -308,11 +332,5 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
     .catch(error => console.error("❌ Error submitting answer:", error));
 }
 
-// ✅ End Trivia Immediately
-function endTrivia() {
-    console.log("🔚 Ending Trivia Round (front-end)");
-    triviaActive = false;
-    waitingScreen.style.display = "none";
-    quizContainer.style.display = "none";
-    document.getElementById("trivia-ended-screen").style.display = "block";
-}
+// Initialize UI in waiting state
+setUIState("waiting");

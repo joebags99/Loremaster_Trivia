@@ -1,0 +1,151 @@
+/* 🎨 Fantasy-Inspired but Readable Style */
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@300;700&family=Uncial+Antiqua&display=swap');
+
+body {
+    font-family: 'Merriweather', serif;
+    background: #2b1f1f;
+    color: #f4e4ba;
+    text-align: center;
+    margin: 0;
+    padding: 20px;
+}
+
+html, body {
+    overflow-x: hidden;  /* Prevents horizontal scrolling */
+    max-width: 100%;
+}
+
+/* 🔧 Layout Fix: Center and Ensure Even Spacing */
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 600px; /* Prevents elements from expanding too much */
+    margin: 0 auto;
+    padding: 10px;
+}
+
+/* 📜 Fieldset Styling */
+fieldset {
+    border: 2px solid #c4a484;
+    border-radius: 12px;
+    padding: 15px;
+    margin: 15px auto;
+    background: rgba(40, 30, 20, 0.9);
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
+    width: 100%; /* Ensures full width within container */
+    max-width: 600px; /* Prevents it from being too wide */
+}
+
+/* 🏷️ Legend Styling */
+legend {
+    font-family: 'Uncial Antiqua', cursive;
+    font-size: 1.4rem;
+    color: #ffcc00;
+    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.8);
+    padding: 0 10px;
+    text-align: center;
+}
+
+/* 🏆 Labels & Inputs */
+label {
+    display: block;
+    font-size: 1rem;
+    font-weight: bold;
+    margin-top: 10px;
+    color: #ffeb9b;
+    text-shadow: 1px 1px 3px black;
+}
+
+input {
+    width: 95%;
+    padding: 8px;
+    margin-top: 5px;
+    border: 2px solid #c4a484;
+    border-radius: 5px;
+    font-size: 1rem;
+    text-align: center;
+    background: #3b2b1a;
+    color: #ffeb9b;
+    display: block;
+    margin: 0 auto;
+}
+
+/* 📂 File Input */
+input[type="file"] {
+    border: none;
+    background: transparent;
+    color: #ffcc00;
+    max-width: 100%;
+}
+
+/* 🔘 Buttons */
+button {
+    background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
+    border: 2px solid #c4a484;
+    color: white;
+    font-size: 1rem;
+    font-family: 'Merriweather', serif;
+    padding: 10px 15px;
+    margin-top: 10px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0px 0px 8px rgba(255, 204, 0, 0.7);
+    width: 95%;
+    display: block;
+    margin: 10px auto;
+}
+
+button:hover {
+    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
+    box-shadow: 0px 0px 15px rgba(255, 204, 0, 1);
+    transform: scale(1.05);
+}
+
+/* 🛑 End Trivia Button - More Intense */
+#end-trivia {
+    background: linear-gradient(180deg, #8b0000 0%, #400000 100%);
+    border-color: #b30000;
+    box-shadow: 0px 0px 15px rgba(255, 34, 34, 0.8);
+}
+
+#end-trivia:hover {
+    background: linear-gradient(180deg, #ff0000 0%, #8b0000 100%);
+    box-shadow: 0px 0px 20px rgba(255, 34, 34, 1);
+}
+
+/* ✅ Status Message */
+#status {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #ffcc00;
+    text-shadow: 2px 2px 5px black;
+    margin-top: 15px;
+}
+
+/* 🔄 Responsive Fixes */
+@media (max-width: 768px) {
+    .container {
+        max-width: 95%;
+        padding: 5px;
+    }
+    
+    fieldset {
+        width: 90%;
+    }
+    
+    h1 {
+        font-size: 2rem;
+    }
+
+    button {
+        width: 100%;
+    }
+
+    input {
+        width: 100%;
+    }
+}

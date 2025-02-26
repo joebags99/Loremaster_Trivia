@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Trivia Extension Viewer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Trivia Waiting Screen -->
+  <div id="waiting-screen">
+    <h2 id="waiting-text">Trivia has not started yet.</h2>
+    <span id="countdown-timer" style="display: none;"></span>
+    <h3 id="user-score">Score: 0</h3>
+  </div>  
+
+<!-- Trivia Ended Screen -->
+<div id="trivia-ended-screen" style="display: none;">
+  <h2>Trivia Has Ended</h2>
+  <p>Thank you for playing! The host has ended the trivia session.</p>
+</div>
+  
+  <!-- Trivia Screen: Displays Question & Choices -->
+  <div id="quiz-container" style="display: none;">
+    <div id="question-box">
+      <h2 id="question-text">Waiting for trivia question...</h2>
+    </div>
+    <div id="timer-bar"></div>
+    <div id="choices-container"></div>
+  </div>
+  
+  <!-- Twitch Helper -->
+  <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  <!-- External Front-End Script -->
+  <script src="script.js"></script>
+</body>
+</html>

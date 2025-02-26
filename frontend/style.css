@@ -1,0 +1,182 @@
+/* 🎨 Fantasy Font & Background */
+@import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&display=swap');
+
+body {
+    font-family: 'Uncial Antiqua', cursive;
+    color: #f4e4ba;
+    text-align: center;
+    overflow: hidden;
+}
+
+/* 🔧 Fix Twitch iframe transparency issues */
+html, body {
+    background-color: rgba(34, 17, 0, 1) !important;
+}
+
+/* 📜 Waiting Screen (Before Trivia Starts) */
+#waiting-screen {
+    display: flex;
+    flex-direction: column; /* ✅ Ensures proper vertical centering */
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    text-align: center;
+    font-size: clamp(18px, 4vw, 32px);
+    color: #ffcc00;
+    text-shadow: 2px 2px 8px rgba(0, 0, 0, 1);
+    background: rgba(34, 17, 0, 0.9);
+    border-radius: 15px;
+    box-shadow: 0px 0px 15px rgba(255, 215, 0, 0.8);
+    padding: 20px;
+}
+
+/* ⏳ Countdown Timer */
+#countdown-timer {
+    font-size: clamp(20px, 4vw, 32px);
+    font-weight: bold;
+    color: #ffcc00;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 5px 12px;
+    border-radius: 6px;
+    box-shadow: 0px 0px 10px rgba(255, 204, 0, 0.6);
+    text-shadow: 2px 2px 5px black;
+}
+
+/* 📜 Main Quiz Container */
+#quiz-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    max-width: 800px;
+    margin: auto;
+    padding: 20px;
+    border: 3px solid #c4a484;
+    background: rgba(34, 17, 0, 0.9);
+    border-radius: 15px;
+    box-shadow: 0px 0px 15px rgba(255, 215, 0, 0.8);
+}
+
+/* 📜 Question Box - Responsive Text */
+#question-box {
+    background: linear-gradient(180deg, #542e10, #3b1f0d);
+    padding: 15px;
+    width: 100%;
+    border-radius: 12px;
+    border: 3px solid #c4a484;
+    box-shadow: 0px 0px 10px rgba(255, 204, 0, 0.6);
+    color: #ffcc00 !important;
+    text-shadow: 2px 2px 8px rgba(0, 0, 0, 1) !important;
+    font-size: clamp(16px, 4vw, 30px);
+    font-weight: bold;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal; /* ✅ Ensures proper word wrapping */
+    max-width: 95%;
+}
+
+/* 🔍 Fix for Twitch text being too faint */
+h2, p, #question-text {
+    color: #ffcc00 !important;
+    text-shadow: 2px 2px 8px black !important;
+    font-size: clamp(14px, 3vw, 26px) !important;
+    font-weight: bold;
+    max-width: 90%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* ⏳ Timer Bar - Magical Energy */
+/* Note: The transition duration is set dynamically by JS using the broadcast duration */
+#timer-bar {
+    width: 100%;
+    height: 12px;
+    background: linear-gradient(90deg, #ffcc00, #ff6600);
+    box-shadow: 0px 0px 10px rgba(255, 153, 0, 0.8);
+    transition: width 30s linear;
+    border-radius: 5px;
+    margin-bottom: 15px;
+}
+
+/* 🔮 Answer Choices - Mystic Buttons */
+#choices-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    margin-top: 15px;
+}
+
+.choice-button {
+    background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
+    border: 3px solid #c4a484;
+    color: white !important;
+    text-shadow: 2px 2px 5px black;
+    font-family: 'Uncial Antiqua', cursive;
+    font-size: clamp(14px, 3vw, 22px);
+    padding: 12px 20px;
+    width: 45%;
+    cursor: pointer;
+    border-radius: 12px;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0px 0px 8px rgba(255, 204, 0, 0.7);
+}
+
+.choice-button:hover {
+    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
+    box-shadow: 0px 0px 15px rgba(255, 204, 0, 1);
+    transform: scale(1.05);
+}
+
+/* 🔵 Selected Answer Glow (Blue before timer ends) */
+.selected {
+    box-shadow: 0px 0px 15px rgba(0, 102, 255, 0.8);
+    border-color: #007bff;
+    background: linear-gradient(180deg, #0044cc, #002a80);
+    transition: background 0.3s ease-in-out;
+}
+
+/* ✅ Correct Answer Glow */
+.correct {
+    background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%);
+    color: #ffffff;
+    border-color: #1e7e34;
+    box-shadow: 0px 0px 15px rgba(34, 255, 34, 0.8);
+    transition: background 0.5s ease-in-out;
+}
+
+/* ❌ Incorrect Answer Glow */
+.wrong {
+    background: linear-gradient(180deg, #8b0000 0%, #400000 100%);
+    color: #ffffff;
+    border-color: #b30000;
+    box-shadow: 0px 0px 15px rgba(255, 34, 34, 0.8);
+    transition: background 0.5s ease-in-out;
+}
+
+/* 🛑 Disabled Button Styling */
+.choice-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* ✅ Responsive Fix for Twitch iframe Scaling */
+@media (max-width: 600px) {
+    #quiz-container {
+        max-width: 90%;
+        padding: 15px;
+    }
+    .choice-button {
+        width: 100%;
+        font-size: clamp(12px, 3vw, 18px);
+    }
+    #question-box {
+        font-size: clamp(14px, 3vw, 22px);
+    }
+}

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Loremaster Trivia</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Mobile-specific overrides */
+    body {
+      font-size: 16px;
+      touch-action: manipulation;
+      -webkit-text-size-adjust: 100%;
+    }
+    
+    #waiting-screen, #trivia-ended-screen {
+      padding: 15px;
+    }
+    
+    #countdown-timer {
+      font-size: 30px;
+      padding: 8px 16px;
+    }
+    
+    #user-score {
+      font-size: 24px;
+      margin-top: 20px;
+    }
+    
+    #quiz-container {
+      width: 100%;
+      max-width: 100%;
+      padding: 15px;
+      border-width: 2px;
+    }
+    
+    #question-box {
+      padding: 20px 15px;
+      margin-bottom: 20px;
+    }
+    
+    #question-text {
+      font-size: 22px !important;
+    }
+    
+    .choice-button {
+      min-height: 64px;
+      width: 100%;
+      margin: 8px 0;
+      padding: 16px;
+      font-size: 18px;
+      border-radius: 8px;
+    }
+    
+    #timer-bar {
+      height: 16px;
+      margin: 15px 0;
+    }
+    
+    /* Fix for multi-part layouts */
+    #choices-container {
+      flex-direction: column;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Trivia Waiting Screen -->
+    <div id="waiting-screen">
+      <h2 id="waiting-text">Trivia has not started yet.</h2>
+      <span id="countdown-timer" style="display: none;"></span>
+      <h3 id="user-score">Score: 0</h3>
+    </div>
+
+    <!-- Trivia Ended Screen -->
+    <div id="trivia-ended-screen" style="display: none;">
+      <h2>Trivia Has Ended</h2>
+      <p>Thank you for playing!</p>
+    </div>
+    
+    <!-- Trivia Screen: Displays Question & Choices -->
+    <div id="quiz-container" style="display: none;">
+      <div id="question-box">
+        <h2 id="question-text">Waiting for trivia question...</h2>
+      </div>
+      <div id="timer-bar"></div>
+      <div id="choices-container"></div>
+    </div>
+  </div>
+  
+  <!-- Twitch Extension Helper -->
+  <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  
+  <!-- External Front-End Script -->
+  <script src="script.js"></script>
+</body>
+</html>

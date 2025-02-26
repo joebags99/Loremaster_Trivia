@@ -57,6 +57,19 @@ function setUIState(state) {
     }
 }
 
+// Add after the setUIState function
+function showOverlay() {
+    window.Twitch.ext.actions.requestIdleCallback(() => {
+      window.Twitch.ext.overlay.show();
+    });
+  }
+  
+  function hideOverlay() {
+    window.Twitch.ext.actions.requestIdleCallback(() => {
+      window.Twitch.ext.overlay.hide();
+    });
+  }
+
 // ✅ Listen for Twitch PubSub Messages
 window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
     console.log("📩 Received broadcast:", message);
@@ -94,6 +107,13 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                 nextQuestionTime = Date.now() + data.timeRemaining;
                 updateCountdown(data.timeRemaining);
                 
+                // Show overlay when 1 minute or less remains
+                if (data.timeRemaining <= 60000 && data.timeRemaining > 0) {
+                    showOverlay();
+                } else if (data.timeRemaining <= 0 || data.timeRemaining > 60000) {
+                    hideOverlay();
+                }
+
                 // Reset the flag after a delay
                 setTimeout(() => {
                     countdownUpdatedByPubSub = false;
@@ -145,6 +165,13 @@ setInterval(() => {
 
     // Update the local countdown
     updateCountdown(timeRemaining);
+    
+    // Show overlay when 1 minute or less remains
+if (timeRemaining <= 60000 && timeRemaining > 0) {
+    showOverlay();
+  } else if (timeRemaining <= 0 || timeRemaining > 60000) {
+    hideOverlay();
+  }
 
     // Check if it's time to request the next question
     if (timeRemaining <= 0 && !questionRequested) {

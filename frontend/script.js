@@ -9,11 +9,14 @@ let triviaSettings = {
     intervalTime: 600000   // Default 10 minutes
 };
 
-// Retrieve Twitch User ID on authorization
+// Retrieve Twitch User ID on authorization and fetch user score
 window.Twitch.ext.onAuthorized((auth) => {
     console.log("✅ Extension authorized");
     userId = auth.userId;
     console.log("✅ User Authorized:", userId);
+    
+    // Fetch the user's score from the database
+    fetchUserScore(userId);
 });
 
 // --- DOM Elements ---
@@ -115,6 +118,33 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
         console.error("❌ Error parsing broadcast message:", err);
     }
 });
+
+// New function to fetch user score from the server
+function fetchUserScore(userId) {
+    if (!userId) {
+        console.warn("⚠ Cannot fetch score: User ID is missing");
+        return;
+    }
+    
+    console.log(`📊 Fetching score for user: ${userId}`);
+    
+    fetch(`/score/${userId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log(`🏆 Retrieved user score from server:`, data);
+            displayScore(data.score || 0);
+        })
+        .catch(error => {
+            console.error("❌ Error fetching user score:", error);
+            // Still display a 0 score on error
+            displayScore(0);
+        });
+}
 
 // ✅ Improved countdown update function
 function updateCountdown(timeRemaining) {
@@ -284,10 +314,22 @@ function startTriviaTimer(duration, correctAnswer) {
 function displayScore(score) {
     const scoreElement = document.getElementById("user-score");
     if (scoreElement) {
-        scoreElement.textContent = `Score: ${score}`;
-        console.log(`🏆 Score updated: ${score}`);
+        // Format the score nicely and ensure it's a number
+        const formattedScore = Number(score).toLocaleString();
+        scoreElement.textContent = `Score: ${formattedScore}`;
+        console.log(`🏆 Score updated: ${formattedScore}`);
     } else {
         console.error("❌ Score element not found!");
+        
+        // If the element doesn't exist yet, try again after a short delay
+        // This handles cases where the DOM might not be fully loaded
+        setTimeout(() => {
+            const retryElement = document.getElementById("user-score");
+            if (retryElement) {
+                retryElement.textContent = `Score: ${Number(score).toLocaleString()}`;
+                console.log(`🏆 Score updated on retry: ${score}`);
+            }
+        }, 500);
     }
 }
 

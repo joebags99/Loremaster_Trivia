@@ -11,6 +11,7 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const { Console } = require("console");
+const { Sequelize, DataTypes } = require("sequelize");
 const PORT = process.env.PORT || 5000; // default port
 
 // Global state variables
@@ -20,6 +21,74 @@ let triviaRoundEndTime = 0; // Prevents countdown updates during an active trivi
 let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
 let questionInProgress = false; // ✅ Prevents multiple questions at once
 let usedQuestions = []; // Avoiding Repeat Questions
+
+// Create Sequelize instance
+const sequelize = new Sequelize({
+  dialect: "mysql",
+  host: process.env.DB_HOST,
+  username: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  logging: console.log, // Set to false in production
+  pool: {
+    max: 5,
+    min: 0,
+    acquire: 30000,
+    idle: 10000
+  }
+});
+
+// Define Score model
+const Score = sequelize.define("Score", {
+  userId: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    primaryKey: true,
+    comment: "Twitch User ID"
+  },
+  score: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Total score of the user"
+  },
+  lastUpdated: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: Sequelize.NOW,
+    comment: "Last time the score was updated"
+  }
+}, {
+  tableName: "user_scores",
+  timestamps: true, // Enables createdAt and updatedAt
+  updatedAt: "lastUpdated",
+  indexes: [
+    {
+      unique: true,
+      fields: ["userId"]
+    }
+  ]
+});
+
+// Initialize database connection
+async function initDatabase() {
+  try {
+    // Test the connection
+    await sequelize.authenticate();
+    console.log("✅ Database connection established successfully.");
+    
+    // Sync models with database (create tables if they don't exist)
+    await sequelize.sync();
+    console.log("✅ Database tables synchronized.");
+  } catch (error) {
+    console.error("❌ Unable to connect to the database:", error);
+    // Don't exit the process - the app can still work without DB
+    console.warn("⚠️ Continuing without database persistence. Scores will be lost on server restart.");
+  }
+}
+
+// Call initialization function
+initDatabase();
 
 // Initialize Express app
 const app = express();
@@ -275,8 +344,8 @@ app.post("/upload-csv", upload.single("file"), (req, res) => {
   }
 });
 
-// ✅ Handle User Answer Submission
-app.post("/submit-answer", (req, res) => {
+// ✅ Handle User Answer Submission with Database Storage
+app.post("/submit-answer", async (req, res) => {
   try {
     const { userId, selectedAnswer, correctAnswer, answerTime } = req.body;
 
@@ -297,9 +366,35 @@ app.post("/submit-answer", (req, res) => {
       }
     }
 
-    // ✅ Track Player Score
+    // ✅ Track Player Score in memory (temporary until DB confirmed working)
     if (!usersScores[userId]) usersScores[userId] = 0;
     usersScores[userId] += points;
+
+    // ✅ Persist score to database
+    try {
+      // Try to find existing score
+      const userScore = await Score.findByPk(userId);
+      
+      if (userScore) {
+        // Update existing score
+        userScore.score = userScore.score + points;
+        userScore.lastUpdated = new Date();
+        await userScore.save();
+        console.log(`🏆 Updated DB score for ${userId}: ${userScore.score}`);
+      } else {
+        // Create new score record
+        await Score.create({
+          userId: userId,
+          score: points,
+          lastUpdated: new Date()
+        });
+        console.log(`🏆 Created new DB score for ${userId}: ${points}`);
+      }
+    } catch (dbError) {
+      // Log error but don't fail the request
+      console.error("❌ Database error when saving score:", dbError);
+      console.log("⚠️ Continuing with in-memory score only");
+    }
 
     console.log(`🏆 User ${userId} earned ${points} points! Total: ${usersScores[userId]}`);
     res.json({ success: true, pointsEarned: points, totalScore: usersScores[userId] });
@@ -309,11 +404,57 @@ app.post("/submit-answer", (req, res) => {
   }
 });
 
-// ✅ Retrieve Player Score
-app.get("/score/:userId", (req, res) => {
+// ✅ Retrieve Player Score from Database with better error handling
+app.get("/score/:userId", async (req, res) => {
   const { userId } = req.params;
-  const score = usersScores[userId] || 0;
-  res.json({ userId, score });
+  
+  // Validate userId
+  if (!userId || userId === 'undefined') {
+    console.warn("⚠️ Invalid user ID requested:", userId);
+    return res.status(400).json({ 
+      error: "Invalid user ID", 
+      userId, 
+      score: 0 
+    });
+  }
+  
+  try {
+    console.log(`📊 Score request for user: ${userId}`);
+    
+    // Attempt to get score from database first
+    const userScore = await Score.findByPk(userId);
+    
+    if (userScore) {
+      console.log(`📊 Retrieved score from DB for ${userId}: ${userScore.score}`);
+      return res.json({ 
+        userId, 
+        score: userScore.score,
+        lastUpdated: userScore.lastUpdated,
+        source: 'database'
+      });
+    }
+    
+    // Fallback to memory if not in database
+    const memoryScore = usersScores[userId] || 0;
+    console.log(`📊 Using memory score for ${userId}: ${memoryScore}`);
+    
+    res.json({ 
+      userId, 
+      score: memoryScore,
+      source: 'memory' 
+    });
+  } catch (error) {
+    console.error(`❌ Error retrieving score for ${userId}:`, error);
+    
+    // Fallback to memory on database error
+    const score = usersScores[userId] || 0;
+    res.json({ 
+      userId, 
+      score, 
+      source: 'memory-fallback',
+      error: error.message 
+    });
+  }
 });
 
 // ✅ Manual Route to Send a Trivia Question
@@ -455,16 +596,46 @@ function sendSettingsUpdate() {
   .catch(error => console.error("❌ Error broadcasting trivia settings:", error));
 }
 
-// ✅ Export Scores as CSV
-app.get("/export-scores", (req, res) => {
-  let csvContent = "User ID,Score\n";
-  Object.entries(usersScores).forEach(([userId, score]) => {
-    csvContent += `${userId},${score}\n`;
-  });
+// ✅ Export Scores as CSV from Database
+app.get("/export-scores", async (req, res) => {
+  try {
+    // Fetch all scores from database
+    const allScores = await Score.findAll({
+      order: [['score', 'DESC']]
+    });
 
-  res.setHeader("Content-Disposition", "attachment; filename=scores.csv");
-  res.setHeader("Content-Type", "text/csv");
-  res.send(csvContent);
+    // Create CSV content
+    let csvContent = "User ID,Score,Last Updated\n";
+    
+    // Add database scores
+    allScores.forEach(record => {
+      csvContent += `${record.userId},${record.score},${record.lastUpdated}\n`;
+    });
+
+    // Add any scores that might only exist in memory
+    for (const [userId, score] of Object.entries(usersScores)) {
+      // Skip if already in database results
+      if (allScores.some(record => record.userId === userId)) continue;
+      
+      csvContent += `${userId},${score},memory-only\n`;
+    }
+
+    res.setHeader("Content-Disposition", "attachment; filename=loremaster_scores.csv");
+    res.setHeader("Content-Type", "text/csv");
+    res.send(csvContent);
+  } catch (error) {
+    console.error("❌ Error exporting scores from database:", error);
+    
+    // Fallback to memory-only export
+    let csvContent = "User ID,Score,Source\n";
+    Object.entries(usersScores).forEach(([userId, score]) => {
+      csvContent += `${userId},${score},memory-fallback\n`;
+    });
+    
+    res.setHeader("Content-Disposition", "attachment; filename=loremaster_scores_fallback.csv");
+    res.setHeader("Content-Type", "text/csv");
+    res.send(csvContent);
+  }
 });
 
 // ✅ IMPROVED: End Trivia Immediately

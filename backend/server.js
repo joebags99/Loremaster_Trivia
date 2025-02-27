@@ -11,7 +11,6 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const { Console } = require("console");
-const { Sequelize, DataTypes } = require('sequelize');
 const PORT = process.env.PORT || 5000; // default port
 
 // Global state variables
@@ -21,46 +20,6 @@ let triviaRoundEndTime = 0; // Prevents countdown updates during an active trivi
 let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
 let questionInProgress = false; // ✅ Prevents multiple questions at once
 let usedQuestions = []; // Avoiding Repeat Questions
-
-// Database connection setup
-const sequelize = new Sequelize(
-  process.env.DB_NAME || 'trivia',
-  process.env.DB_USER || 'root', 
-  process.env.DB_PASSWORD || '',
-  {
-    host: process.env.DB_HOST || 'localhost',
-    dialect: 'mysql'
-  }
-);
-
-// Initialize database
-async function initDatabase() {
-  try {
-    await sequelize.authenticate();
-    console.log('✅ Connected to MySQL');
-    await sequelize.sync();
-    console.log('✅ Tables synchronized');
-  } catch (error) {
-    console.error('❌ Database connection error:', error);
-  }
-}
-
-// Define Score model
-const Score = sequelize.define('Score', {
-  userId: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true
-  },
-  score: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
-  },
-  lastUpdated: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
-  }
-});
 
 // Initialize Express app
 const app = express();
@@ -317,7 +276,7 @@ app.post("/upload-csv", upload.single("file"), (req, res) => {
 });
 
 // ✅ Handle User Answer Submission
-app.post("/submit-answer", async (req, res) => {
+app.post("/submit-answer", (req, res) => {
   try {
     const { userId, selectedAnswer, correctAnswer, answerTime } = req.body;
 
@@ -325,7 +284,7 @@ app.post("/submit-answer", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // Calculate score based on answer time
+    // ✅ Calculate Score Based on Answer Time
     let points = 0;
     if (selectedAnswer === correctAnswer) {
       if (answerTime <= 3000) {
@@ -333,26 +292,17 @@ app.post("/submit-answer", async (req, res) => {
       } else if (answerTime >= 25000) {
         points = 500;
       } else {
+        // Gradual decrease from 1500 down to 500
         points = Math.max(500, Math.round(1500 - ((answerTime - 3000) / 22)));
       }
     }
 
-    // Find or create user score record
-    let [userScore, created] = await Score.findOrCreate({
-      where: { userId },
-      defaults: { score: 0 }
-    });
-    
-    // Update score
-    userScore.score += points;
-    userScore.lastUpdated = new Date();
-    await userScore.save();
-    
-    // Update in-memory cache
-    usersScores[userId] = userScore.score;
+    // ✅ Track Player Score
+    if (!usersScores[userId]) usersScores[userId] = 0;
+    usersScores[userId] += points;
 
-    console.log(`🏆 User ${userId} earned ${points} points! Total: ${userScore.score}`);
-    res.json({ success: true, pointsEarned: points, totalScore: userScore.score });
+    console.log(`🏆 User ${userId} earned ${points} points! Total: ${usersScores[userId]}`);
+    res.json({ success: true, pointsEarned: points, totalScore: usersScores[userId] });
   } catch (error) {
     console.error("❌ Error submitting answer:", error);
     res.status(500).json({ error: "Server error" });
@@ -625,9 +575,6 @@ app.get("/get-next-question", (req, res) => {
   console.log("📩 Sending next trivia question");
   res.json(responseObj);
 });
-
-// Initialize database connection
-initDatabase();
 
 // ✅ Start Server
 app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));

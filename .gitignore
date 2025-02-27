@@ -1,5 +1,9 @@
 node_modules
-uploads/*
 backend/uploads/*
 package-lock.json
 .env
+CSV Import for MySQL.js
+SQL_Scripts/
+Trivia_Sets/
+improved-csv-import.js
+uploads/

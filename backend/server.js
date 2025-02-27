@@ -404,23 +404,11 @@ app.post("/submit-answer", async (req, res) => {
   }
 });
 
-// ✅ Retrieve Player Score from Database with better error handling
+// ✅ Retrieve Player Score from Database
 app.get("/score/:userId", async (req, res) => {
   const { userId } = req.params;
   
-  // Validate userId
-  if (!userId || userId === 'undefined') {
-    console.warn("⚠️ Invalid user ID requested:", userId);
-    return res.status(400).json({ 
-      error: "Invalid user ID", 
-      userId, 
-      score: 0 
-    });
-  }
-  
   try {
-    console.log(`📊 Score request for user: ${userId}`);
-    
     // Attempt to get score from database first
     const userScore = await Score.findByPk(userId);
     
@@ -429,8 +417,7 @@ app.get("/score/:userId", async (req, res) => {
       return res.json({ 
         userId, 
         score: userScore.score,
-        lastUpdated: userScore.lastUpdated,
-        source: 'database'
+        lastUpdated: userScore.lastUpdated 
       });
     }
     
@@ -438,22 +425,13 @@ app.get("/score/:userId", async (req, res) => {
     const memoryScore = usersScores[userId] || 0;
     console.log(`📊 Using memory score for ${userId}: ${memoryScore}`);
     
-    res.json({ 
-      userId, 
-      score: memoryScore,
-      source: 'memory' 
-    });
+    res.json({ userId, score: memoryScore });
   } catch (error) {
     console.error(`❌ Error retrieving score for ${userId}:`, error);
     
     // Fallback to memory on database error
     const score = usersScores[userId] || 0;
-    res.json({ 
-      userId, 
-      score, 
-      source: 'memory-fallback',
-      error: error.message 
-    });
+    res.json({ userId, score, fromMemory: true });
   }
 });
 

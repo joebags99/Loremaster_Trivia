@@ -122,7 +122,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
     }
 });
 
-// New function to fetch user score from the server
+f// Update fetchUserScore function to handle both scores
 function fetchUserScore(userId) {
     if (!userId) {
         console.warn("⚠ Cannot fetch score: User ID is missing");
@@ -139,13 +139,14 @@ function fetchUserScore(userId) {
             return response.json();
         })
         .then(data => {
-            console.log(`🏆 Retrieved user score from server:`, data);
-            displayScore(data.score || 0);
+            console.log(`🏆 Retrieved user scores from server:`, data);
+            // Update both scores in the UI
+            displayScores(data.totalScore || 0, data.sessionScore || 0);
         })
         .catch(error => {
             console.error("❌ Error fetching user score:", error);
-            // Still display a 0 score on error
-            displayScore(0);
+            // Still display zeros on error
+            displayScores(0, 0);
         });
 }
 
@@ -343,30 +344,45 @@ function startTriviaTimer(duration, correctAnswer) {
     }, duration);
 }
 
-// ✅ Display User Score
-function displayScore(score) {
-    const scoreElement = document.getElementById("user-score");
-    if (scoreElement) {
-        // Format the score nicely and ensure it's a number
-        const formattedScore = Number(score).toLocaleString();
-        scoreElement.textContent = `Score: ${formattedScore}`;
-        console.log(`🏆 Score updated: ${formattedScore}`);
-    } else {
-        console.error("❌ Score element not found!");
+// Update displayScore to handle both total and session scores
+function displayScores(totalScore, sessionScore) {
+    // Find or create score elements
+    const scoreContainer = document.getElementById("user-score");
+    
+    if (scoreContainer) {
+        // Format scores nicely
+        const formattedTotal = Number(totalScore).toLocaleString();
+        const formattedSession = Number(sessionScore).toLocaleString();
         
-        // If the element doesn't exist yet, try again after a short delay
-        // This handles cases where the DOM might not be fully loaded
+        // Create HTML with both scores
+        scoreContainer.innerHTML = `
+            <div class="total-score">Total Score: ${formattedTotal}</div>
+            <div class="session-score">Session Score: ${formattedSession}</div>
+        `;
+        
+        console.log(`🏆 Scores updated: Total=${formattedTotal}, Session=${formattedSession}`);
+    } else {
+        console.error("❌ Score container not found!");
+        
+        // Try again after a short delay
         setTimeout(() => {
             const retryElement = document.getElementById("user-score");
             if (retryElement) {
-                retryElement.textContent = `Score: ${Number(score).toLocaleString()}`;
-                console.log(`🏆 Score updated on retry: ${score}`);
+                const formattedTotal = Number(totalScore).toLocaleString();
+                const formattedSession = Number(sessionScore).toLocaleString();
+                
+                retryElement.innerHTML = `
+                    <div class="total-score">Total Score: ${formattedTotal}</div>
+                    <div class="session-score">Session Score: ${formattedSession}</div>
+                `;
+                console.log(`🏆 Scores updated on retry: Total=${totalScore}, Session=${sessionScore}`);
             }
         }, 500);
     }
 }
 
-// ✅ Handle Answer Submission
+
+// Update selectAnswer function to handle both scores
 function selectAnswer(button, selectedChoice, correctAnswer) {
     if (!userId) {
         console.warn("⚠ User ID missing. Cannot track score.");
@@ -404,7 +420,8 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
     .then(response => response.json())
     .then(data => {
         console.log("🏆 Score updated!", data);
-        displayScore(data.totalScore);
+        // Update both scores
+        displayScores(data.totalScore || 0, data.sessionScore || 0);
         
         // Store the answer data for later display when timer ends
         if (data.pointsEarned > 0) {

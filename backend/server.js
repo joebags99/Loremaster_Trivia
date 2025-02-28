@@ -16,6 +16,7 @@ const PORT = process.env.PORT || 5000; // default port
 
 // Global state variables
 const usersScores = {}; // Stores scores { "twitchUserID": score }
+const userSessionScores = {}; // Stores session scores { "twitchUserID": score }
 let triviaActive = false; // ✅ Trivia is inactive until manually started
 let triviaRoundEndTime = 0; // Prevents countdown updates during an active trivia round
 let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
@@ -575,6 +576,7 @@ app.post("/upload-csv", upload.single("file"), (req, res) => {
 });
 
 // ✅ Handle User Answer Submission with Improved Scoring System
+// Modify the submit-answer endpoint to track both scores
 app.post("/submit-answer", async (req, res) => {
   try {
     const { userId, selectedAnswer, correctAnswer, answerTime, difficulty, duration } = req.body;
@@ -583,7 +585,7 @@ app.post("/submit-answer", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // ✅ NEW: Calculate Score Based on Difficulty and Timing
+    // Calculate Score Based on Difficulty and Timing
     let basePoints = 0;
     const questionDifficulty = difficulty || 'Medium';  // Default to Medium if not specified
     const questionDuration = duration || triviaSettings.answerTime || 30000; // Use provided duration or default
@@ -619,11 +621,16 @@ app.post("/submit-answer", async (req, res) => {
       console.log(`❌ Incorrect answer: ${selectedAnswer} (correct: ${correctAnswer})`);
     }
 
-    // ✅ Track Player Score in memory
+    // Track total score in memory (for backup)
     if (!usersScores[userId]) usersScores[userId] = 0;
     usersScores[userId] += points;
+    
+    // Track session score separately
+    if (!userSessionScores[userId]) userSessionScores[userId] = 0;
+    userSessionScores[userId] += points;
 
-    // ✅ Persist score to database
+    // Persist total score to database
+    let totalScore = 0;
     try {
       // Try to find existing score
       const userScore = await Score.findByPk(userId);
@@ -633,7 +640,8 @@ app.post("/submit-answer", async (req, res) => {
         userScore.score = userScore.score + points;
         userScore.lastUpdated = new Date();
         await userScore.save();
-        console.log(`🏆 Updated DB score for ${userId}: ${userScore.score}`);
+        totalScore = userScore.score;
+        console.log(`🏆 Updated DB score for ${userId}: ${totalScore}`);
       } else {
         // Create new score record
         await Score.create({
@@ -641,19 +649,24 @@ app.post("/submit-answer", async (req, res) => {
           score: points,
           lastUpdated: new Date()
         });
-        console.log(`🏆 Created new DB score for ${userId}: ${points}`);
+        totalScore = points;
+        console.log(`🏆 Created new DB score for ${userId}: ${totalScore}`);
       }
     } catch (dbError) {
       // Log error but don't fail the request
       console.error("❌ Database error when saving score:", dbError);
       console.log("⚠️ Continuing with in-memory score only");
+      totalScore = usersScores[userId]; // Fallback to memory score
     }
 
-    console.log(`🏆 User ${userId} earned ${points} points! Total: ${usersScores[userId]}`);
+    const sessionScore = userSessionScores[userId];
+    console.log(`🏆 User ${userId} earned ${points} points! Total: ${totalScore}, Session: ${sessionScore}`);
+    
     res.json({ 
       success: true, 
       pointsEarned: points, 
-      totalScore: usersScores[userId],
+      totalScore: totalScore,
+      sessionScore: sessionScore,
       basePoints,
       difficulty: questionDifficulty,
       timePercentage: Math.round((1 - Math.min(1, answerTime / questionDuration)) * 100)
@@ -664,36 +677,61 @@ app.post("/submit-answer", async (req, res) => {
   }
 });
 
-// ✅ Retrieve Player Score from Database
+// Modify the score retrieval endpoint to include session score
 app.get("/score/:userId", async (req, res) => {
   const { userId } = req.params;
   
   try {
-    // Attempt to get score from database first
+    // Get session score
+    const sessionScore = userSessionScores[userId] || 0;
+    
+    // Attempt to get total score from database
     const userScore = await Score.findByPk(userId);
     
     if (userScore) {
-      console.log(`📊 Retrieved score from DB for ${userId}: ${userScore.score}`);
+      console.log(`📊 Retrieved score from DB for ${userId}: Total=${userScore.score}, Session=${sessionScore}`);
       return res.json({ 
         userId, 
-        score: userScore.score,
+        totalScore: userScore.score,
+        sessionScore: sessionScore,
         lastUpdated: userScore.lastUpdated 
       });
     }
     
     // Fallback to memory if not in database
     const memoryScore = usersScores[userId] || 0;
-    console.log(`📊 Using memory score for ${userId}: ${memoryScore}`);
+    console.log(`📊 Using memory score for ${userId}: Total=${memoryScore}, Session=${sessionScore}`);
     
-    res.json({ userId, score: memoryScore });
+    res.json({ 
+      userId, 
+      totalScore: memoryScore,
+      sessionScore: sessionScore
+    });
   } catch (error) {
     console.error(`❌ Error retrieving score for ${userId}:`, error);
     
     // Fallback to memory on database error
-    const score = usersScores[userId] || 0;
-    res.json({ userId, score, fromMemory: true });
+    const totalScore = usersScores[userId] || 0;
+    const sessionScore = userSessionScores[userId] || 0;
+    res.json({ 
+      userId, 
+      totalScore: totalScore, 
+      sessionScore: sessionScore,
+      fromMemory: true
+    });
   }
 });
+
+// Add endpoint to reset session scores (e.g., when a broadcaster ends trivia)
+app.post("/reset-session-scores", (req, res) => {
+  console.log("🔄 Resetting all session scores");
+  // Clear all session scores
+  Object.keys(userSessionScores).forEach(key => {
+    userSessionScores[key] = 0;
+  });
+  res.json({ success: true, message: "Session scores reset" });
+});
+
 
 // ✅ Manual Route to Send a Trivia Question
 app.post("/send-test", async (req, res) => {
@@ -876,13 +914,18 @@ app.get("/export-scores", async (req, res) => {
   }
 });
 
-// ✅ IMPROVED: End Trivia Immediately
+// Modify the end-trivia endpoint to also reset session scores
 app.post("/end-trivia", (req, res) => {
   console.log("🛑 Trivia manually ended!");
 
   triviaActive = false;
   triviaRoundEndTime = 0;
   nextQuestionTime = null;
+  
+  // Reset session scores when trivia ends
+  Object.keys(userSessionScores).forEach(key => {
+    userSessionScores[key] = 0;
+  });
 
   const token = generateToken();
   const endPayload = {

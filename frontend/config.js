@@ -33,65 +33,142 @@ window.Twitch.ext.onAuthorized((auth) => {
     loadBroadcasterSettings();
 });
 
-// Load categories from the API
+// Use Twitch EBS to load categories
 function loadCategories() {
-    fetch(`${getServerURL()}/api/categories`)
-        .then(response => response.json())
-        .then(data => {
-            console.log("✅ Categories loaded:", data);
-            window.trivia.categories = data.categories || [];
-            renderCategories();
-        })
-        .catch(error => {
-            console.error("❌ Error loading categories:", error);
-            document.getElementById("categories-list").innerHTML = 
-                '<div class="loading" style="color: #ff6b6b;">Failed to load categories. Please refresh.</div>';
-        });
+    // Use Twitch's approved API methods instead of direct fetch
+    window.Twitch.ext.rig.log('Requesting categories');
+    
+    window.Twitch.ext.send('broadcast', 'application/json', {
+        type: 'GET_CATEGORIES'
+    });
+    
+    // Listen for the response in the Twitch.ext.listen handler
+    // The server will respond with the categories
 }
 
-// Load difficulties from the API
+// Use Twitch EBS to load difficulties
 function loadDifficulties() {
-    fetch(`${getServerURL()}/api/difficulties`)
-        .then(response => response.json())
-        .then(data => {
-            console.log("✅ Difficulties loaded:", data);
-            window.trivia.difficulties = data.difficulties || [];
-            renderDifficulties();
-        })
-        .catch(error => {
-            console.error("❌ Error loading difficulties:", error);
-            document.getElementById("difficulties-list").innerHTML = 
-                '<div class="loading" style="color: #ff6b6b;">Failed to load difficulties. Please refresh.</div>';
-        });
+    window.Twitch.ext.rig.log('Requesting difficulties');
+    
+    window.Twitch.ext.send('broadcast', 'application/json', {
+        type: 'GET_DIFFICULTIES'
+    });
+    
+    // Listen for the response in the Twitch.ext.listen handler
 }
 
-// Load broadcaster's saved settings
+// Load broadcaster's saved settings via Twitch
 function loadBroadcasterSettings() {
     if (!window.broadcasterId) {
         console.error("❌ Broadcaster ID not available yet");
         return;
     }
     
-    fetch(`${getServerURL()}/api/settings/${window.broadcasterId}`)
-        .then(response => response.json())
-        .then(data => {
-            console.log("✅ Broadcaster settings loaded:", data);
-            if (data.settings) {
-                window.trivia.selectedCategories = data.settings.active_categories || [];
-                window.trivia.selectedDifficulties = data.settings.active_difficulties || [];
-                
-                // Update UI once categories and difficulties are loaded
-                setTimeout(() => {
-                    updateCategoryCheckboxes();
-                    updateDifficultyCheckboxes();
-                    updateQuestionStats();
-                }, 500);
-            }
-        })
-        .catch(error => {
-            console.error("❌ Error loading broadcaster settings:", error);
-        });
+    window.Twitch.ext.send('broadcast', 'application/json', {
+        type: 'GET_BROADCASTER_SETTINGS',
+        broadcasterId: window.broadcasterId
+    });
+    
+    // Listen for the response in the Twitch.ext.listen handler
 }
+
+// Add a listener for responses from the backend
+window.Twitch.ext.listen('broadcast', (target, contentType, message) => {
+    console.log("📩 Received broadcast:", message);
+    try {
+        const data = JSON.parse(message);
+        console.log("📢 Parsed broadcast data:", data);
+
+        switch (data.type) {
+            case "SETTINGS_UPDATE":
+                console.log("⚙️ Updating Settings:", data);
+                triviaSettings.answerTime = data.answerTime || triviaSettings.answerTime;
+                triviaSettings.intervalTime = data.intervalTime || triviaSettings.intervalTime;
+                break;
+
+            case "CATEGORIES_RESPONSE":
+                console.log("📚 Received categories:", data);
+                window.trivia.categories = data.categories || [];
+                renderCategories();
+                break;
+                
+            case "DIFFICULTIES_RESPONSE":
+                console.log("🔄 Received difficulties:", data);
+                window.trivia.difficulties = data.difficulties || [];
+                renderDifficulties();
+                break;
+                
+            case "BROADCASTER_SETTINGS_RESPONSE":
+                console.log("⚙️ Received broadcaster settings:", data);
+                if (data.settings) {
+                    window.trivia.selectedCategories = data.settings.active_categories || [];
+                    window.trivia.selectedDifficulties = data.settings.active_difficulties || [];
+                    
+                    // Update UI
+                    setTimeout(() => {
+                        updateCategoryCheckboxes();
+                        updateDifficultyCheckboxes();
+                        updateQuestionStats();
+                    }, 500);
+                }
+                break;
+
+            case "TRIVIA_START":
+                console.log("🚀 Trivia has started!");
+                triviaActive = true;
+                // Use the intervalTime from settings or data
+                const intervalTime = data.intervalTime || triviaSettings.intervalTime || 600000;
+                nextQuestionTime = Date.now() + intervalTime;
+                setUIState("countdown");
+                updateCountdown(intervalTime);
+                break;
+
+            case "TRIVIA_QUESTION":
+                console.log("🎯 TRIVIA_QUESTION received!");
+                questionRequested = false; // Reset request flag
+                displayQuestion(data);
+                break;
+
+            case "COUNTDOWN_UPDATE":
+                console.log(`⏳ COUNTDOWN_UPDATE: ${Math.round(data.timeRemaining / 1000)}s remaining`);
+                // Set flag to prevent local updates conflicting with server updates
+                countdownUpdatedByPubSub = true;
+                nextQuestionTime = Date.now() + data.timeRemaining;
+                updateCountdown(data.timeRemaining);
+                
+                // Reset the flag after a delay
+                setTimeout(() => {
+                    countdownUpdatedByPubSub = false;
+                }, 2000);
+                break;
+
+            case "TRIVIA_END":
+                console.log("⛔ Trivia has been ended by the broadcaster.");
+                triviaActive = false;
+                nextQuestionTime = null;
+                setUIState("ended");
+                break;
+
+            case "QUESTION_STATS_RESPONSE":
+                console.log("📊 Received question stats:", data);
+                window.trivia.totalQuestions = data.totalMatching || 0;
+                updateQuestionStatsDisplay(data);
+                break;
+
+            case "FILTERS_SAVED":
+                console.log("💾 Filters saved response:", data);
+                document.getElementById("status").textContent = "✅ Question filters saved!";
+                updateQuestionStats();
+                break;
+
+            default:
+                console.warn("⚠️ Unknown broadcast type:", data.type);
+                break;
+        }
+    } catch (err) {
+        console.error("❌ Error parsing broadcast message:", err);
+    }
+});
 
 // Render category checkboxes
 function renderCategories() {
@@ -198,42 +275,36 @@ function updateQuestionStats() {
     const categoriesParam = window.trivia.selectedCategories.join(',');
     const difficultiesParam = window.trivia.selectedDifficulties.join(',');
     
-    let url = `${getServerURL()}/api/sample-questions?limit=1`;
-    if (categoriesParam) url += `&categories=${categoriesParam}`;
-    if (difficultiesParam) url += `&difficulties=${difficultiesParam}`;
+    window.Twitch.ext.send('broadcast', 'application/json', {
+        type: 'GET_QUESTION_STATS',
+        categories: window.trivia.selectedCategories,
+        difficulties: window.trivia.selectedDifficulties
+    });
+}
+
+// Display question stats in the UI
+function updateQuestionStatsDisplay(data) {
+    let statsHtml = '';
+    if (window.trivia.selectedCategories.length === 0 && window.trivia.selectedDifficulties.length === 0) {
+        statsHtml = `<span style="color: #ffcc00;">Using all available questions (${window.trivia.totalQuestions})</span>`;
+    } else {
+        const categoryText = window.trivia.selectedCategories.length === 0 ? 
+            "all categories" : 
+            `${window.trivia.selectedCategories.length} selected categor${window.trivia.selectedCategories.length === 1 ? 'y' : 'ies'}`;
+        
+        const difficultyText = window.trivia.selectedDifficulties.length === 0 ? 
+            "all difficulties" : 
+            `${window.trivia.selectedDifficulties.length} selected difficult${window.trivia.selectedDifficulties.length === 1 ? 'y' : 'ies'}`;
+        
+        statsHtml = `
+            <div>Using ${categoryText} and ${difficultyText}</div>
+            <div style="margin-top: 5px; font-size: 1.1em; color: #ffcc00;">
+                ${window.trivia.totalQuestions} questions match your selection
+            </div>
+        `;
+    }
     
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            window.trivia.totalQuestions = data.totalMatching || 0;
-            
-            let statsHtml = '';
-            if (window.trivia.selectedCategories.length === 0 && window.trivia.selectedDifficulties.length === 0) {
-                statsHtml = `<span style="color: #ffcc00;">Using all available questions (${window.trivia.totalQuestions})</span>`;
-            } else {
-                const categoryText = window.trivia.selectedCategories.length === 0 ? 
-                    "all categories" : 
-                    `${window.trivia.selectedCategories.length} selected categor${window.trivia.selectedCategories.length === 1 ? 'y' : 'ies'}`;
-                
-                const difficultyText = window.trivia.selectedDifficulties.length === 0 ? 
-                    "all difficulties" : 
-                    `${window.trivia.selectedDifficulties.length} selected difficult${window.trivia.selectedDifficulties.length === 1 ? 'y' : 'ies'}`;
-                
-                statsHtml = `
-                    <div>Using ${categoryText} and ${difficultyText}</div>
-                    <div style="margin-top: 5px; font-size: 1.1em; color: #ffcc00;">
-                        ${window.trivia.totalQuestions} questions match your selection
-                    </div>
-                `;
-            }
-            
-            document.getElementById("question-stats").innerHTML = statsHtml;
-        })
-        .catch(error => {
-            console.error("❌ Error getting question stats:", error);
-            document.getElementById("question-stats").innerHTML = 
-                '<div style="color: #ff6b6b;">Error loading question statistics</div>';
-        });
+    document.getElementById("question-stats").innerHTML = statsHtml;
 }
 
 // Save category and difficulty filters
@@ -246,33 +317,14 @@ function saveFilters() {
         return;
     }
     
-    const activeCategories = window.trivia.selectedCategories;
-    const activeDifficulties = window.trivia.selectedDifficulties;
-    
-    fetch(`${getServerURL()}/api/settings/${window.broadcasterId}`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${window.authToken}`
-        },
-        body: JSON.stringify({
-            activeCategories,
-            activeDifficulties
-        }),
-        credentials: "include"
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log("✅ Filters saved:", data);
-        document.getElementById("status").textContent = "✅ Question filters saved!";
-        
-        // Update question stats
-        updateQuestionStats();
-    })
-    .catch(error => {
-        console.error("❌ Error saving filters:", error);
-        document.getElementById("status").textContent = "❌ Failed to save filters!";
+    window.Twitch.ext.send('broadcast', 'application/json', {
+        type: 'SAVE_FILTERS',
+        broadcasterId: window.broadcasterId,
+        activeCategories: window.trivia.selectedCategories,
+        activeDifficulties: window.trivia.selectedDifficulties
     });
+    
+    document.getElementById("status").textContent = "⏳ Saving filters...";
 }
 
 // ✅ Function to safely attach event listeners
@@ -283,19 +335,6 @@ function attachButtonListener(buttonId, handler) {
         console.log(`✅ Attached event listener to #${buttonId}`);
     } else {
         console.error(`❌ Button #${buttonId} NOT found in DOM!`);
-    }
-}
-
-function getServerURL() {
-    // Check if we're in a production environment (Twitch) or local development
-    const isProduction = window.location.hostname !== 'localhost';
-    
-    if (isProduction) {
-        // Use your EC2 domain or IP
-        return "https://loremaster-trivia.com";
-    } else {
-        // For local development
-        return "http://localhost:5000";
     }
 }
 
@@ -327,76 +366,55 @@ function saveSettings() {
 
     console.log("📤 Sending settings update:", { answerTime, intervalTime });
 
-    fetch(`${getServerURL()}/update-settings`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${window.authToken}`, // ✅ Send Twitch Auth Token
-        },
-        body: JSON.stringify({ answerTime, intervalTime }),
-        credentials: "include", // ✅ Ensure credentials are sent
-    })    
-    .then(response => response.json())
-    .then(data => {
-        console.log("✅ Settings update response:", data);
-        document.getElementById("status").textContent = "✅ Settings Saved!";
-    })
-    .catch(error => {
-        console.error("❌ Error updating settings:", error);
-        document.getElementById("status").textContent = "❌ Failed to Save!";
+    window.Twitch.ext.send('broadcast', 'application/json', {
+        type: 'UPDATE_SETTINGS',
+        answerTime: answerTime,
+        intervalTime: intervalTime
     });
+    
+    document.getElementById("status").textContent = "⏳ Saving settings...";
 }
 
-// ✅ Export scores
+// ✅ Export scores via iframe download
 function exportScores() {
     console.log("📥 Export Scores button clicked!");
-    window.location.href = `${getServerURL()}/export-scores`;
+    
+    // Create a hidden iframe to handle the download
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = `https://api.loremaster-trivia.com/export-scores?jwt=${window.authToken}`;
+    document.body.appendChild(iframe);
+    
+    // Clean up after download starts
+    setTimeout(() => {
+        document.body.removeChild(iframe);
+    }, 5000);
+    
+    document.getElementById("status").textContent = "📥 Downloading scores...";
 }
 
 // ✅ Start Trivia
 function startTrivia() {
     console.log("▶️ Start Trivia button clicked!");
 
-    fetch(`${getServerURL()}/start-trivia`, { 
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${window.authToken}`,
-        },
-        credentials: "include",
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log("🏆 Trivia started!", data);
-        document.getElementById("status").textContent = "🏆 Trivia Started!";
-        disableSettings(true); // ✅ Lock settings when trivia starts
-    })
-    .catch(error => {
-        console.error("❌ Error starting trivia:", error);
-        document.getElementById("status").textContent = "❌ Failed to Start!";
+    window.Twitch.ext.send('broadcast', 'application/json', {
+        type: 'START_TRIVIA'
     });
+    
+    document.getElementById("status").textContent = "⏳ Starting trivia...";
+    disableSettings(true); // ✅ Lock settings when trivia starts
 }
 
 // ✅ End trivia immediately
 function endTrivia() {
     console.log("⛔ End Trivia button clicked!");
 
-    fetch(`${getServerURL()}/end-trivia`, { 
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${window.authToken}`,
-        },
-        credentials: "include",
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log("⛔ Trivia force-ended:", data);
-        document.getElementById("status").textContent = "🛑 Trivia Ended!";
-        disableSettings(false); // ✅ Unlock settings when trivia ends
-    })
-    .catch(error => {
-        console.error("❌ Error ending trivia:", error);
-        document.getElementById("status").textContent = "❌ Failed to End Trivia!";
+    window.Twitch.ext.send('broadcast', 'application/json', {
+        type: 'END_TRIVIA'
     });
+    
+    document.getElementById("status").textContent = "⏳ Ending trivia...";
+    disableSettings(false); // ✅ Unlock settings when trivia ends
 }
 
 // ✅ Function to Enable/Disable Settings

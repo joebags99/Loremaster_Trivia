@@ -23,20 +23,49 @@ let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-ques
 let questionInProgress = false; // ✅ Prevents multiple questions at once
 let usedQuestions = []; // Avoiding Repeat Questions
 
+// Configure CORS for Twitch EBS
 const corsOptions = {
-  origin: function (origin, callback) {
-      const allowedOrigins = [
-          // Local development
-          'http://localhost:8080',
-          // Twitch domains
-          'https://twitch.tv',
-          'https://*.ext-twitch.tv',
-          'https://extension-files.twitch.tv',
-          // Your domain (if serving frontend from EC2)
-          'https://loremaster-trivia.com'
-      ];
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if the origin is allowed
+    const allowedOrigins = [
+      // Twitch domains - using regex to match all subdomains
+      /^https:\/\/.*\.ext-twitch\.tv$/,
+      /^https:\/\/.*\.twitch\.tv$/,
+      'https://ext-twitch.tv',
+      'https://twitch.tv',
+      'https://extension-files.twitch.tv',
+      // Your domain
+      'https://loremaster-trivia.com',
+      'https://api.loremaster-trivia.com',
+      // For local development
+      'http://localhost:8080',
+      'http://localhost:5000',
+      'http://localhost:3000'
+    ];
+    
+    // Check against regex patterns and exact matches
+    const allowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return allowedOrigin === origin;
+    });
+    
+    if (allowed) {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️ Request from disallowed origin: ${origin}`);
+      callback(null, false);
     }
-  };
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 86400 // 24 hours
+};
 
 // Create Sequelize instance
 const sequelize = new Sequelize({
@@ -356,6 +385,29 @@ app.use(express.static(path.join(__dirname, "frontend"))); // Serve frontend via
 app.use(cors());
 app.use(express.json());
 
+// Add security headers
+app.use((req, res, next) => {
+  // Prevent browsers from incorrectly detecting non-scripts as scripts
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  
+  // Don't allow site to be framed except by Twitch
+  res.setHeader('X-Frame-Options', 'ALLOW-FROM https://twitch.tv');
+  
+  // Helps prevent XSS attacks
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Set content security policy for Twitch extensions
+  res.setHeader('Content-Security-Policy', `
+    default-src 'self' https://*.twitch.tv https://*.ext-twitch.tv;
+    connect-src 'self' https://*.twitch.tv https://*.ext-twitch.tv wss://pubsub-edge.twitch.tv https://api.twitch.tv;
+    img-src 'self' https://*.twitch.tv https://*.ext-twitch.tv data:;
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.twitch.tv https://*.ext-twitch.tv;
+    style-src 'self' 'unsafe-inline' https://*.twitch.tv https://*.ext-twitch.tv;
+  `.replace(/\s+/g, ' ').trim());
+  
+  next();
+});
+
 // ✅ Serve frontend files from the correct directory
 const frontendPath = path.join(__dirname, "../frontend");
 app.use(express.static(frontendPath));
@@ -399,6 +451,58 @@ function generateToken() {
       extSecretRaw,
       { algorithm: "HS256" }
   );
+}
+
+// ✅ Helper: Broadcast to Twitch PubSub
+async function broadcastToTwitch(channelId, message) {
+  try {
+    const token = generateToken();
+    const payload = {
+      target: ["broadcast"],
+      broadcaster_id: channelId.toString(),
+      is_global_broadcast: false,
+      message: JSON.stringify(message),
+    };
+
+    await axios.post(
+      "https://api.twitch.tv/helix/extensions/pubsub",
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Client-Id": EXT_CLIENT_ID,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    console.log(`✅ Message type "${message.type}" broadcasted to channel ${channelId}`);
+    return true;
+  } catch (error) {
+    console.error("❌ Error broadcasting to Twitch:", error.response?.data || error.message);
+    return false;
+  }
+}
+
+// ✅ Middleware: Verify Twitch JWT tokens for secured routes
+function verifyTwitchJWT(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid token' });
+  }
+  
+  const token = auth.split(' ')[1];
+  
+  try {
+    const decoded = jwt.verify(token, extSecretRaw, {
+      algorithms: ['HS256']
+    });
+    
+    req.twitchUser = decoded;
+    next();
+  } catch (error) {
+    console.error('❌ JWT Verification error:', error);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 }
 
 // ✅ Timing Constants
@@ -921,9 +1025,23 @@ function sendSettingsUpdate() {
   .catch(error => console.error("❌ Error broadcasting trivia settings:", error));
 }
 
-// ✅ Export Scores as CSV from Database
+// ✅ Export Scores as CSV from Database with JWT support
 app.get("/export-scores", async (req, res) => {
   try {
+    const jwtToken = req.query.jwt;
+    
+    // Validate JWT if provided
+    if (jwtToken) {
+      try {
+        jwt.verify(jwtToken, extSecretRaw, {
+          algorithms: ['HS256']
+        });
+        console.log("✅ Valid JWT token provided for export-scores");
+      } catch (jwtError) {
+        console.warn("⚠️ Invalid JWT for export-scores, continuing anyway");
+      }
+    }
+    
     // Fetch all scores from database
     const allScores = await Score.findAll({
       order: [['score', 'DESC']]
@@ -1260,6 +1378,303 @@ app.get("/api/sample-questions", async (req, res) => {
     console.error("❌ Error getting sample questions:", error);
     res.status(500).json({ error: "Failed to get sample questions" });
   }
+});
+
+// ✅ Handle Twitch extension message handler
+app.post("/twitch/message", express.json(), async (req, res) => {
+  try {
+    const { channelId, message } = req.body;
+    
+    if (!channelId || !message || !message.type) {
+      return res.status(400).json({ error: "Invalid request parameters" });
+    }
+    
+    console.log(`📩 Received Twitch message: ${message.type} for channel ${channelId}`);
+    
+    switch (message.type) {
+      case "GET_CATEGORIES":
+        // Get categories and broadcast back to Twitch
+        const categories = await sequelize.query(
+          "SELECT DISTINCT category_id FROM trivia_questions ORDER BY category_id",
+          { type: sequelize.QueryTypes.SELECT }
+        );
+        
+        // Count questions in each category
+        const categoriesWithCounts = await Promise.all(categories.map(async (category) => {
+          const count = await TriviaQuestion.count({
+            where: { category_id: category.category_id }
+          });
+          
+          return {
+            id: category.category_id,
+            name: category.category_id, // Use ID as name
+            questionCount: count
+          };
+        }));
+        
+        // Broadcast categories back to the extension
+        await broadcastToTwitch(channelId, {
+          type: "CATEGORIES_RESPONSE",
+          categories: categoriesWithCounts
+        });
+        break;
+        
+      case "GET_DIFFICULTIES":
+        // Get difficulties and broadcast back to Twitch
+        const difficulties = await sequelize.query(
+          "SELECT DISTINCT difficulty, COUNT(*) as count FROM trivia_questions GROUP BY difficulty ORDER BY FIELD(difficulty, 'Easy', 'Medium', 'Hard')",
+          { type: sequelize.QueryTypes.SELECT }
+        );
+        
+        // Broadcast difficulties back to the extension
+        await broadcastToTwitch(channelId, {
+          type: "DIFFICULTIES_RESPONSE",
+          difficulties: difficulties
+        });
+        break;
+        
+      case "GET_BROADCASTER_SETTINGS":
+        // Get broadcaster settings
+        const settings = await TriviaSettings.findByPk(message.broadcasterId || channelId);
+        
+        // Broadcast settings back to the extension
+        await broadcastToTwitch(channelId, {
+          type: "BROADCASTER_SETTINGS_RESPONSE",
+          settings: settings || {
+            broadcaster_id: message.broadcasterId || channelId,
+            active_categories: [],
+            active_difficulties: ["Easy", "Medium", "Hard"]
+          }
+        });
+        break;
+        
+      case "GET_QUESTION_STATS":
+        // Get question stats based on selected filters
+        const categoryFilter = message.categories || [];
+        const difficultyFilter = message.difficulties || [];
+        
+        // Build where clause
+        const whereClause = {};
+        if (categoryFilter.length > 0) {
+          whereClause.category_id = categoryFilter;
+        }
+        if (difficultyFilter.length > 0) {
+          whereClause.difficulty = difficultyFilter;
+        }
+        
+        // Count matching questions
+        const count = await TriviaQuestion.count({
+          where: whereClause
+        });
+        
+        // Broadcast stats back to the extension
+        await broadcastToTwitch(channelId, {
+          type: "QUESTION_STATS_RESPONSE",
+          totalMatching: count,
+          filters: {
+            categories: categoryFilter,
+            difficulties: difficultyFilter
+          }
+        });
+        break;
+        
+      case "SAVE_FILTERS":
+        // Save broadcaster filters
+        const [updatedSettings, created] = await TriviaSettings.upsert({
+          broadcaster_id: message.broadcasterId,
+          active_categories: message.activeCategories || [],
+          active_difficulties: message.activeDifficulties || ["Easy", "Medium", "Hard"]
+        });
+        
+        // Get sample counts for response
+        const matchingCount = await TriviaQuestion.count({
+          where: {
+            category_id: message.activeCategories?.length > 0 ? message.activeCategories : { [Sequelize.Op.ne]: null },
+            difficulty: message.activeDifficulties?.length > 0 ? message.activeDifficulties : { [Sequelize.Op.ne]: null }
+          }
+        });
+        
+        // Broadcast response back to the extension
+        await broadcastToTwitch(channelId, {
+          type: "FILTERS_SAVED",
+          settings: updatedSettings,
+          created: created,
+          questionCount: matchingCount,
+          message: `Settings ${created ? 'created' : 'updated'}. ${matchingCount} questions match your filters.`
+        });
+        break;
+        
+      case "UPDATE_SETTINGS":
+        // Validate time values
+        const answerTime = message.answerTime;
+        const intervalTime = message.intervalTime;
+        
+        if (
+          typeof answerTime !== "number" ||
+          typeof intervalTime !== "number" ||
+          answerTime < 5000 || answerTime > 60000 ||  
+          intervalTime < 60000 || intervalTime > 1800000  
+        ) {
+          console.error("❌ Invalid time values:", { answerTime, intervalTime });
+          return res.status(400).json({ error: "Invalid time values" });
+        }
+        
+        // Save settings
+        triviaSettings.answerTime = answerTime;
+        triviaSettings.intervalTime = intervalTime;
+        
+        // Broadcast settings update
+        await broadcastToTwitch(channelId, {
+          type: "SETTINGS_UPDATE",
+          answerTime: triviaSettings.answerTime,
+          intervalTime: triviaSettings.intervalTime,
+        });
+        break;
+        
+      case "START_TRIVIA":
+        // Only start if not already running
+        if (triviaActive) {
+          console.log("⚠️ Trivia is already running. Ignoring start request.");
+          return res.json({ success: false, message: "Trivia is already running!" });
+        }
+        
+        // Set trivia active
+        triviaActive = true;
+        
+        // Reset used questions
+        usedQuestions = [];
+        console.log("🔄 Used questions list reset upon trivia start via Twitch message");
+        
+        // Broadcast start event
+        await broadcastToTwitch(channelId, { 
+          type: "TRIVIA_START",
+          intervalTime: triviaSettings.intervalTime
+        });
+        
+        // Set next question time
+        const nextInterval = triviaSettings?.intervalTime || 600000;
+        nextQuestionTime = Date.now() + nextInterval;
+        break;
+        
+      case "END_TRIVIA":
+        // Set trivia inactive
+        triviaActive = false;
+        triviaRoundEndTime = 0;
+        nextQuestionTime = null;
+        
+        // Reset used questions
+        usedQuestions = [];
+        console.log("🔄 Used questions list cleared upon trivia end via Twitch message");
+        
+        // Reset session scores
+        Object.keys(userSessionScores).forEach(key => {
+          userSessionScores[key] = 0;
+        });
+        
+        // Broadcast end event
+        await broadcastToTwitch(channelId, { type: "TRIVIA_END" });
+        break;
+        
+      default:
+        console.warn(`⚠️ Unknown message type: ${message.type}`);
+        return res.status(400).json({ error: `Unknown message type: ${message.type}` });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("❌ Error handling Twitch message:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ Set up a proxy endpoint for the extension to use
+app.post('/ext-proxy', express.json(), (req, res) => {
+  const { endpoint, method, data, jwt } = req.body;
+  
+  // Validate the request
+  if (!endpoint) {
+    return res.status(400).json({ error: 'Missing endpoint parameter' });
+  }
+  
+  // Validate JWT if provided
+  if (jwt) {
+    try {
+      const decoded = jwt.verify(jwt, extSecretRaw, {
+        algorithms: ['HS256']
+      });
+      
+      // Set authorized user info
+      req.twitchUser = decoded;
+    } catch (error) {
+      console.warn('⚠️ Invalid JWT in proxy request, proceeding without authentication');
+    }
+  }
+  
+  // Determine the full internal URL
+  const url = `/api/${endpoint}`;
+  
+  console.log(`🔄 Proxying request to ${url}`);
+  
+  // Create a new request to our internal API
+  const options = {
+    method: method || 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+  
+  // Add body for POST requests
+  if (method === 'POST' && data) {
+    options.body = JSON.stringify(data);
+  }
+  
+  // Forward the request to our internal API
+  fetch(url, options)
+    .then(response => response.json())
+    .then(data => res.json(data))
+    .catch(error => {
+      console.error('❌ Error in proxy request:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    });
+});
+
+// ✅ Create a separate JWT-authenticated proxy endpoint for secure operations
+app.post('/ext-secure-proxy', express.json(), verifyTwitchJWT, (req, res) => {
+  const { endpoint, method, data } = req.body;
+  
+  // Validate the request
+  if (!endpoint) {
+    return res.status(400).json({ error: 'Missing endpoint parameter' });
+  }
+  
+  // Determine the full internal URL
+  const url = `/api/${endpoint}`;
+  
+  console.log(`🔒 Secure proxying request to ${url}`);
+  
+  // Create a new request to our internal API
+  const options = {
+    method: method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Twitch-User-ID': req.twitchUser.user_id,
+      'X-Twitch-Role': req.twitchUser.role
+    }
+  };
+  
+  // Add body for POST requests
+  if (method === 'POST' && data) {
+    options.body = JSON.stringify(data);
+  }
+  
+  // Forward the request to our internal API
+  fetch(url, options)
+    .then(response => response.json())
+    .then(data => res.json(data))
+    .catch(error => {
+      console.error('❌ Error in secure proxy request:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    });
 });
 
 // ✅ Start Server

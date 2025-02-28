@@ -70,6 +70,90 @@ const Score = sequelize.define("Score", {
   ]
 });
 
+// ✅ Define TriviaQuestion model to match your database structure
+const TriviaQuestion = sequelize.define("TriviaQuestion", {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
+  },
+  question: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  correct_answer: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  wrong_answer1: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  wrong_answer2: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  wrong_answer3: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  category_id: {
+    type: DataTypes.STRING(100),
+    allowNull: false
+  },
+  difficulty: {
+    type: DataTypes.STRING(50),
+    defaultValue: 'Medium'
+  },
+  created_at: {
+    type: DataTypes.DATE,
+    defaultValue: Sequelize.NOW
+  }
+}, {
+  tableName: "trivia_questions",
+  timestamps: false
+});
+
+// Define QuestionCategory model (for reference only - not required for basic functionality)
+const QuestionCategory = sequelize.define("QuestionCategory", {
+  id: {
+    type: DataTypes.STRING(100),
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  }
+}, {
+  tableName: "question_categories",
+  timestamps: false
+});
+
+// Define TriviaSettings model for broadcaster preferences
+const TriviaSettings = sequelize.define("TriviaSettings", {
+  broadcaster_id: {
+    type: DataTypes.STRING(100),
+    primaryKey: true
+  },
+  active_categories: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
+  },
+  active_difficulties: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: ["Easy", "Medium", "Hard"]
+  }
+}, {
+  tableName: "trivia_settings",
+  timestamps: false
+});
+
 // Initialize database connection
 async function initDatabase() {
   try {
@@ -87,8 +171,137 @@ async function initDatabase() {
   }
 }
 
-// Call initialization function
-initDatabase();
+// Load initial questions to memory (for backward compatibility)
+async function loadInitialQuestions() {
+  try {
+    console.log("🔄 Loading initial questions from database...");
+    
+    // Get a subset of questions from the database
+    const dbQuestions = await loadQuestionsFromDB();
+    
+    // Convert to the format expected by existing code
+    triviaQuestions = dbQuestions.map(q => ({
+      question: q.question,
+      choices: q.choices,
+      correctAnswer: q.correctAnswer
+    }));
+    
+    console.log(`✅ Loaded ${triviaQuestions.length} questions into memory from database`);
+  } catch (error) {
+    console.error("❌ Error loading initial questions:", error);
+    console.warn("⚠️ Starting with empty question set");
+    triviaQuestions = [];
+  }
+}
+
+// Call this after database initialization
+initDatabase().then(() => {
+  loadInitialQuestions();
+});
+
+// Function to load questions from database with optional filters
+async function loadQuestionsFromDB(categories = [], difficulties = []) {
+  try {
+    const whereClause = {};
+    
+    // Apply category filter if specified
+    if (categories && categories.length > 0) {
+      whereClause.category_id = categories;
+    }
+    
+    // Apply difficulty filter if specified
+    if (difficulties && difficulties.length > 0) {
+      whereClause.difficulty = difficulties;
+    }
+    
+    const questions = await TriviaQuestion.findAll({
+      where: whereClause,
+      order: sequelize.literal('RAND()'),
+      limit: 500 // Limit to prevent memory issues with large datasets
+    });
+    
+    console.log(`✅ Loaded ${questions.length} trivia questions from database`);
+    
+    return questions.map(q => ({
+      id: q.id,
+      question: q.question,
+      choices: [q.correct_answer, q.wrong_answer1, q.wrong_answer2, q.wrong_answer3],
+      correctAnswer: q.correct_answer,
+      categoryId: q.category_id,
+      difficulty: q.difficulty
+    }));
+  } catch (error) {
+    console.error("❌ Error loading questions from database:", error);
+    return [];
+  }
+}
+
+// Function to get broadcaster's question filters
+async function getBroadcasterFilters(broadcasterId) {
+  try {
+    // Default filters if no settings are found
+    let filters = {
+      categories: [],
+      difficulties: ["Easy", "Medium", "Hard"]
+    };
+    
+    // Find broadcaster settings
+    const settings = await TriviaSettings.findByPk(broadcasterId);
+    
+    if (settings) {
+      // Use broadcaster's preferences if they exist
+      filters.categories = settings.active_categories || [];
+      filters.difficulties = settings.active_difficulties || ["Easy", "Medium", "Hard"];
+    }
+    
+    return filters;
+  } catch (error) {
+    console.error(`❌ Error getting broadcaster filters for ${broadcasterId}:`, error);
+    return {
+      categories: [],
+      difficulties: ["Easy", "Medium", "Hard"]
+    };
+  }
+}
+
+// Function to get a single random question from the database
+async function getRandomQuestionFromDB(categories = [], difficulties = []) {
+  try {
+    const whereClause = {};
+    
+    // Apply category filter if specified
+    if (categories && categories.length > 0) {
+      whereClause.category_id = categories;
+    }
+    
+    // Apply difficulty filter if specified
+    if (difficulties && difficulties.length > 0) {
+      whereClause.difficulty = difficulties;
+    }
+    
+    const question = await TriviaQuestion.findOne({
+      where: whereClause,
+      order: sequelize.literal('RAND()')
+    });
+    
+    if (!question) {
+      console.warn("⚠️ No questions found with the specified filters");
+      return null;
+    }
+    
+    return {
+      id: question.id,
+      question: question.question,
+      choices: [question.correct_answer, question.wrong_answer1, question.wrong_answer2, question.wrong_answer3],
+      correctAnswer: question.correct_answer,
+      categoryId: question.category_id,
+      difficulty: question.difficulty
+    };
+  } catch (error) {
+    console.error("❌ Error getting random question from database:", error);
+    return null;
+  }
+}
 
 // Initialize Express app
 const app = express();
@@ -211,87 +424,104 @@ app.post("/start-trivia", async (req, res) => {
   }
 });
 
-// ✅ IMPROVED: Send Trivia Question
+// ✅ IMPROVED: Send Trivia Question from Database
 async function sendTriviaQuestion(channelId) {
   if (!triviaActive) {
-      console.log("⏳ Trivia is inactive. Waiting for Start command.");
-      return;
-  }
-
-  if (triviaQuestions.length === 0) {
-      console.error("❌ No trivia questions available!");
-      return;
+    console.log("⏳ Trivia is inactive. Waiting for Start command.");
+    return;
   }
 
   if (questionInProgress) {
-      console.warn("⚠️ A question is already in progress! Skipping duplicate question.");
-      return;
+    console.warn("⚠️ A question is already in progress! Skipping duplicate question.");
+    return;
   }
 
   try {
-      // Mark that a question is in progress
-      questionInProgress = true;
+    // Mark that a question is in progress
+    questionInProgress = true;
+    
+    console.log("🧠 Selecting a trivia question from the database...");
+    
+    // Get broadcaster's filter preferences
+    const filters = await getBroadcasterFilters(channelId);
+    
+    // Get a random question from the database using filters
+    let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
+    
+    // If no question matches the filters, try without filters
+    if (!questionObj) {
+      console.warn("⚠️ No questions match broadcaster filters, trying any question...");
+      questionObj = await getRandomQuestionFromDB();
       
-      console.log("🧠 Selecting a trivia question...");
-      const questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
-      
-      // Ensure we have valid question data
-      if (!questionObj || !questionObj.question || !questionObj.choices || !questionObj.correctAnswer) {
-          console.error("❌ Invalid question object:", questionObj);
-          questionInProgress = false; // Reset flag on error
-          return;
+      // If still no question, check if we have any in memory as fallback
+      if (!questionObj && triviaQuestions.length > 0) {
+        console.warn("⚠️ Falling back to in-memory questions");
+        questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
       }
       
-      const shuffledChoices = shuffleArray([...questionObj.choices]);
+      // If we still have no question, we can't continue
+      if (!questionObj) {
+        console.error("❌ No trivia questions available!");
+        questionInProgress = false;
+        return;
+      }
+    }
+    
+    // Shuffle the choices
+    const shuffledChoices = shuffleArray([...questionObj.choices]);
 
-      // Get timing settings with fallbacks
-      const answerTime = triviaSettings?.answerTime || 30000; // Default 30s
-      const intervalTime = triviaSettings?.intervalTime || 600000; // Default 10 min
+    // Get timing settings with fallbacks
+    const answerTime = triviaSettings?.answerTime || 30000; // Default 30s
+    const intervalTime = triviaSettings?.intervalTime || 600000; // Default 10 min
 
-      console.log(`⏳ Current trivia settings → Answer Time: ${answerTime}ms, Interval: ${intervalTime}ms`);
+    console.log(`⏳ Current trivia settings → Answer Time: ${answerTime}ms, Interval: ${intervalTime}ms`);
+    console.log(`📝 Selected question: "${questionObj.question.substring(0, 50)}..." (ID: ${questionObj.id}, Category: ${questionObj.categoryId}, Difficulty: ${questionObj.difficulty})`);
 
-      const pubsubPayload = {
-          target: ["broadcast"],
-          broadcaster_id: channelId.toString(),
-          is_global_broadcast: false,
-          message: JSON.stringify({
-              type: "TRIVIA_QUESTION",
-              question: questionObj.question,
-              choices: shuffledChoices,
-              correctAnswer: questionObj.correctAnswer,
-              duration: answerTime,
-          }),
-      };
+    const pubsubPayload = {
+      target: ["broadcast"],
+      broadcaster_id: channelId.toString(),
+      is_global_broadcast: false,
+      message: JSON.stringify({
+        type: "TRIVIA_QUESTION",
+        question: questionObj.question,
+        choices: shuffledChoices,
+        correctAnswer: questionObj.correctAnswer,
+        duration: answerTime,
+        categoryId: questionObj.categoryId,
+        difficulty: questionObj.difficulty,
+        questionId: questionObj.id
+      }),
+    };
 
-      console.log("📡 Broadcasting trivia:", pubsubPayload.message);
+    console.log("📡 Broadcasting trivia question...");
 
-      const token = generateToken();
-      await axios.post(
-          "https://api.twitch.tv/helix/extensions/pubsub",
-          pubsubPayload,
-          {
-              headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Client-Id": EXT_CLIENT_ID,
-                  "Content-Type": "application/json",
-              },
-          }
-      );
+    const token = generateToken();
+    await axios.post(
+      "https://api.twitch.tv/helix/extensions/pubsub",
+      pubsubPayload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Client-Id": EXT_CLIENT_ID,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-      console.log(`✅ Trivia question sent to channel ${channelId}`);
+    console.log(`✅ Trivia question sent to channel ${channelId}`);
 
-      // Set round end time and schedule the next question
-      triviaRoundEndTime = Date.now() + answerTime + 5000; // Extra 5s buffer
+    // Set round end time and schedule the next question
+    triviaRoundEndTime = Date.now() + answerTime + 5000; // Extra 5s buffer
 
-      setTimeout(() => {
-          questionInProgress = false;
-          nextQuestionTime = Date.now() + intervalTime; 
-          console.log(`⏳ Next trivia question in: ${intervalTime / 1000} seconds`);
-      }, answerTime + 5000);
-      
+    setTimeout(() => {
+      questionInProgress = false;
+      nextQuestionTime = Date.now() + intervalTime; 
+      console.log(`⏳ Next trivia question in: ${intervalTime / 1000} seconds`);
+    }, answerTime + 5000);
+    
   } catch (error) {
-      console.error("❌ Error sending PubSub message:", error.response?.data || error.message);
-      questionInProgress = false; // Always reset the flag on error
+    console.error("❌ Error sending PubSub message:", error.response?.data || error.message);
+    questionInProgress = false; // Always reset the flag on error
   }
 }
 
@@ -344,29 +574,52 @@ app.post("/upload-csv", upload.single("file"), (req, res) => {
   }
 });
 
-// ✅ Handle User Answer Submission with Database Storage
+// ✅ Handle User Answer Submission with Improved Scoring System
 app.post("/submit-answer", async (req, res) => {
   try {
-    const { userId, selectedAnswer, correctAnswer, answerTime } = req.body;
+    const { userId, selectedAnswer, correctAnswer, answerTime, difficulty, duration } = req.body;
 
     if (!userId || !selectedAnswer || !correctAnswer || answerTime === undefined) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // ✅ Calculate Score Based on Answer Time
-    let points = 0;
-    if (selectedAnswer === correctAnswer) {
-      if (answerTime <= 3000) {
-        points = 1500;
-      } else if (answerTime >= 25000) {
-        points = 500;
-      } else {
-        // Gradual decrease from 1500 down to 500
-        points = Math.max(500, Math.round(1500 - ((answerTime - 3000) / 22)));
-      }
+    // ✅ NEW: Calculate Score Based on Difficulty and Timing
+    let basePoints = 0;
+    const questionDifficulty = difficulty || 'Medium';  // Default to Medium if not specified
+    const questionDuration = duration || triviaSettings.answerTime || 30000; // Use provided duration or default
+    
+    // Set base points based on difficulty
+    switch(questionDifficulty) {
+      case 'Easy':
+        basePoints = 500;
+        break;
+      case 'Hard':
+        basePoints = 1500;
+        break;
+      case 'Medium':
+      default:
+        basePoints = 1000;
+        break;
     }
 
-    // ✅ Track Player Score in memory (temporary until DB confirmed working)
+    let points = 0;
+    
+    if (selectedAnswer === correctAnswer) {
+      // Calculate percentage of time elapsed (0 to 1)
+      const timePercentage = Math.min(1, answerTime / questionDuration);
+      
+      // Calculate points reduction (1% per 1% of time)
+      const pointsPercentage = Math.max(0.1, 1 - timePercentage); // Minimum 10%
+      
+      // Final points - round to nearest integer
+      points = Math.round(basePoints * pointsPercentage);
+
+      console.log(`🎯 Scoring: Difficulty=${questionDifficulty}, Base=${basePoints}, Time=${answerTime}/${questionDuration}, Percentage=${Math.round(pointsPercentage * 100)}%, Final=${points}`);
+    } else {
+      console.log(`❌ Incorrect answer: ${selectedAnswer} (correct: ${correctAnswer})`);
+    }
+
+    // ✅ Track Player Score in memory
     if (!usersScores[userId]) usersScores[userId] = 0;
     usersScores[userId] += points;
 
@@ -397,7 +650,14 @@ app.post("/submit-answer", async (req, res) => {
     }
 
     console.log(`🏆 User ${userId} earned ${points} points! Total: ${usersScores[userId]}`);
-    res.json({ success: true, pointsEarned: points, totalScore: usersScores[userId] });
+    res.json({ 
+      success: true, 
+      pointsEarned: points, 
+      totalScore: usersScores[userId],
+      basePoints,
+      difficulty: questionDifficulty,
+      timePercentage: Math.round((1 - Math.min(1, answerTime / questionDuration)) * 100)
+    });
   } catch (error) {
     console.error("❌ Error submitting answer:", error);
     res.status(500).json({ error: "Server error" });
@@ -674,55 +934,236 @@ setInterval(() => {
   }
 }, 1000); // ✅ Runs once per second
 
-// ✅ IMPROVED: Get-Next-Question Endpoint
-app.get("/get-next-question", (req, res) => {
+// ✅ IMPROVED: Get-Next-Question Endpoint with Database Integration
+app.get("/get-next-question", async (req, res) => {
   console.log("📢 /get-next-question endpoint called!");
 
   if (!triviaActive) {
-      console.log("⏳ Trivia is inactive. Skipping next question request.");
-      return res.json({ error: "Trivia is not active." });
+    console.log("⏳ Trivia is inactive. Skipping next question request.");
+    return res.json({ error: "Trivia is not active." });
   }
 
   // Check if we need to wait before sending the next question
   const timeRemaining = nextQuestionTime - Date.now();
   if (timeRemaining > 0) {
-      console.log(`⏳ Next question not ready yet! Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
-      return res.json({ error: "Next question not ready yet.", timeRemaining });
-  }
-
-  // Check if questions are available
-  if (!triviaQuestions || triviaQuestions.length === 0) {
-      console.error("❌ No trivia questions available!");
-      return res.status(400).json({ error: "No trivia questions available." });
+    console.log(`⏳ Next question not ready yet! Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
+    return res.json({ error: "Next question not ready yet.", timeRemaining });
   }
 
   // Prevent overlap with ongoing questions
   if (questionInProgress) {
-      console.warn("⚠️ A question is already in progress!");
-      return res.json({ error: "A question is already in progress." });
+    console.warn("⚠️ A question is already in progress!");
+    return res.json({ error: "A question is already in progress." });
   }
 
-  // Get a random question
-  let questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
-  
-  // Verify the question has all required fields
-  if (!questionObj || !questionObj.question || !questionObj.choices || !questionObj.correctAnswer) {
-      console.error("❌ Invalid question object:", questionObj);
-      return res.status(500).json({ error: "Invalid question data." });
-  }
-  
-  let shuffledChoices = shuffleArray([...questionObj.choices]);
-
-  // Return the question with shuffled choices
-  const responseObj = {
+  try {
+    console.log("🧠 Getting next question from database...");
+    
+    // Get broadcaster filters
+    const filters = await getBroadcasterFilters(CHANNEL_ID);
+    
+    // Get random question from database
+    let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
+    
+    // If no question matches filters, try without filters
+    if (!questionObj) {
+      console.warn("⚠️ No questions match broadcaster filters, trying any question...");
+      questionObj = await getRandomQuestionFromDB();
+      
+      // If still no question, check in-memory as fallback
+      if (!questionObj && triviaQuestions.length > 0) {
+        console.warn("⚠️ Falling back to in-memory questions");
+        questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
+      }
+      
+      // If we still have no question, return error
+      if (!questionObj) {
+        console.error("❌ No trivia questions available!");
+        return res.status(400).json({ error: "No trivia questions available." });
+      }
+    }
+    
+    // Shuffle choices
+    const shuffledChoices = shuffleArray([...questionObj.choices]);
+    
+    // Prepare response
+    const responseObj = {
       question: questionObj.question,
       choices: shuffledChoices,
       correctAnswer: questionObj.correctAnswer,
-      duration: triviaSettings?.answerTime || 30000
-  };
+      duration: triviaSettings?.answerTime || 30000,
+      categoryId: questionObj.categoryId,
+      difficulty: questionObj.difficulty,
+      questionId: questionObj.id
+    };
+    
+    console.log(`📩 Sending next trivia question: ID ${questionObj.id}`);
+    res.json(responseObj);
+  } catch (error) {
+    console.error("❌ Error getting next question:", error);
+    res.status(500).json({ error: "Server error getting next question" });
+  }
+});
 
-  console.log("📩 Sending next trivia question");
-  res.json(responseObj);
+// Get all available categories
+app.get("/api/categories", async (req, res) => {
+  try {
+    // Get unique categories from the questions table
+    const categories = await sequelize.query(
+      "SELECT DISTINCT category_id FROM trivia_questions ORDER BY category_id",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    
+    // Count questions in each category
+    const categoriesWithCounts = await Promise.all(categories.map(async (category) => {
+      const count = await TriviaQuestion.count({
+        where: { category_id: category.category_id }
+      });
+      
+      return {
+        id: category.category_id,
+        name: category.category_id, // Use ID as name
+        questionCount: count
+      };
+    }));
+    
+    res.json({ categories: categoriesWithCounts });
+  } catch (error) {
+    console.error("❌ Error getting categories:", error);
+    res.status(500).json({ error: "Failed to get categories" });
+  }
+});
+
+// Get all available difficulties
+app.get("/api/difficulties", async (req, res) => {
+  try {
+    // Get unique difficulties from the questions table
+    const difficulties = await sequelize.query(
+      "SELECT DISTINCT difficulty, COUNT(*) as count FROM trivia_questions GROUP BY difficulty ORDER BY FIELD(difficulty, 'Easy', 'Medium', 'Hard')",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    
+    res.json({ difficulties });
+  } catch (error) {
+    console.error("❌ Error getting difficulties:", error);
+    res.status(500).json({ error: "Failed to get difficulties" });
+  }
+});
+
+// Get broadcaster's trivia settings
+app.get("/api/settings/:broadcasterId", async (req, res) => {
+  try {
+    const { broadcasterId } = req.params;
+    
+    if (!broadcasterId) {
+      return res.status(400).json({ error: "Broadcaster ID is required" });
+    }
+    
+    // Get broadcaster settings or default
+    const settings = await TriviaSettings.findByPk(broadcasterId);
+    
+    // If no settings exist, return defaults
+    if (!settings) {
+      return res.json({
+        settings: {
+          broadcaster_id: broadcasterId,
+          active_categories: [],
+          active_difficulties: ["Easy", "Medium", "Hard"]
+        }
+      });
+    }
+    
+    res.json({ settings });
+  } catch (error) {
+    console.error("❌ Error getting broadcaster settings:", error);
+    res.status(500).json({ error: "Failed to get broadcaster settings" });
+  }
+});
+
+// Update broadcaster's trivia settings
+app.post("/api/settings/:broadcasterId", async (req, res) => {
+  try {
+    const { broadcasterId } = req.params;
+    const { activeCategories, activeDifficulties } = req.body;
+    
+    if (!broadcasterId) {
+      return res.status(400).json({ error: "Broadcaster ID is required" });
+    }
+    
+    // Validate arrays
+    if (activeCategories && !Array.isArray(activeCategories)) {
+      return res.status(400).json({ error: "activeCategories must be an array" });
+    }
+    
+    if (activeDifficulties && !Array.isArray(activeDifficulties)) {
+      return res.status(400).json({ error: "activeDifficulties must be an array" });
+    }
+    
+    // Update or create settings
+    const [settings, created] = await TriviaSettings.upsert({
+      broadcaster_id: broadcasterId,
+      active_categories: activeCategories || [],
+      active_difficulties: activeDifficulties || ["Easy", "Medium", "Hard"]
+    });
+    
+    // Get sample counts
+    const count = await TriviaQuestion.count({
+      where: {
+        category_id: activeCategories?.length > 0 ? activeCategories : { [Sequelize.Op.ne]: null },
+        difficulty: activeDifficulties?.length > 0 ? activeDifficulties : { [Sequelize.Op.ne]: null }
+      }
+    });
+    
+    res.json({
+      settings,
+      created,
+      questionCount: count,
+      message: `Settings ${created ? 'created' : 'updated'}. ${count} questions match your filters.`
+    });
+  } catch (error) {
+    console.error("❌ Error updating broadcaster settings:", error);
+    res.status(500).json({ error: "Failed to update broadcaster settings" });
+  }
+});
+
+// Get sample questions matching filters
+app.get("/api/sample-questions", async (req, res) => {
+  try {
+    const { categories, difficulties, limit = 5 } = req.query;
+    
+    // Parse filter parameters
+    const categoryFilter = categories ? categories.split(',') : [];
+    const difficultyFilter = difficulties ? difficulties.split(',') : [];
+    
+    // Get sample questions
+    const questions = await loadQuestionsFromDB(
+      categoryFilter.length > 0 ? categoryFilter : undefined,
+      difficultyFilter.length > 0 ? difficultyFilter : undefined
+    );
+    
+    // Limit the number of questions returned
+    const limitedQuestions = questions.slice(0, parseInt(limit));
+    
+    // Map to simplified format for preview
+    const formattedQuestions = limitedQuestions.map(q => ({
+      id: q.id,
+      question: q.question,
+      category: q.categoryId,
+      difficulty: q.difficulty
+    }));
+    
+    res.json({
+      questions: formattedQuestions,
+      totalMatching: questions.length,
+      filters: {
+        categories: categoryFilter,
+        difficulties: difficultyFilter
+      }
+    });
+  } catch (error) {
+    console.error("❌ Error getting sample questions:", error);
+    res.status(500).json({ error: "Failed to get sample questions" });
+  }
 });
 
 // ✅ Start Server

@@ -1419,33 +1419,33 @@ app.post("/twitch/message", express.json(), async (req, res) => {
     console.log(`📩 Received Twitch message: ${message.type} for channel ${channelId}`);
     
     switch (message.type) {
+      // Modify the GET_CATEGORIES handler to ensure proper formatting
       case "GET_CATEGORIES":
-        // Get categories and broadcast back to Twitch
         const categories = await sequelize.query(
-          "SELECT DISTINCT category_id FROM trivia_questions ORDER BY category_id",
-          { type: sequelize.QueryTypes.SELECT }
+            "SELECT DISTINCT category_id FROM trivia_questions ORDER BY category_id",
+            { type: sequelize.QueryTypes.SELECT }
         );
         
         // Count questions in each category
         const categoriesWithCounts = await Promise.all(categories.map(async (category) => {
-          const count = await TriviaQuestion.count({
-            where: { category_id: category.category_id }
-          });
-          
-          return {
-            id: category.category_id,
-            name: category.category_id, // Use ID as name
-            questionCount: count
-          };
+            const count = await TriviaQuestion.count({
+                where: { category_id: category.category_id }
+            });
+            
+            return {
+                id: category.category_id,
+                name: category.category_id, // Use ID as name if no separate name exists
+                questionCount: count
+            };
         }));
         
         // Broadcast categories back to the extension
         await broadcastToTwitch(channelId, {
-          type: "CATEGORIES_RESPONSE",
-          categories: categoriesWithCounts
+            type: "CATEGORIES_RESPONSE",
+            categories: categoriesWithCounts
         });
         break;
-        
+              
       case "GET_DIFFICULTIES":
         // Get difficulties and broadcast back to Twitch
         const difficulties = await sequelize.query(

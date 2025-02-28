@@ -1,62 +1,201 @@
-document.addEventListener("DOMContentLoaded", function () {
-    console.log("✅ DOM fully loaded, initializing event listeners.");
-
-    // Global state for categories and difficulties
-    window.trivia = {
-        categories: [],
-        difficulties: [],
-        selectedCategories: [],
-        selectedDifficulties: [],
-        totalQuestions: 0
+document.addEventListener("DOMContentLoaded", function() {
+    console.log("🔍 Debug script loaded");
+    
+    // Global debug div for persistent messaging
+    const createDebugDiv = () => {
+        const debugDiv = document.createElement('div');
+        debugDiv.id = 'debug-info-panel';
+        debugDiv.style.position = 'fixed';
+        debugDiv.style.bottom = '10px';
+        debugDiv.style.right = '10px';
+        debugDiv.style.background = 'rgba(0,0,0,0.8)';
+        debugDiv.style.color = '#fff';
+        debugDiv.style.padding = '15px';
+        debugDiv.style.borderRadius = '5px';
+        debugDiv.style.zIndex = '9999';
+        debugDiv.style.maxWidth = '300px';
+        debugDiv.style.wordWrap = 'break-word';
+        debugDiv.style.fontFamily = 'monospace';
+        document.body.appendChild(debugDiv);
+        return debugDiv;
     };
 
-    // ✅ Attach button event listeners after Twitch authorization
-    attachButtonListener("save-settings", saveSettings);
-    attachButtonListener("export-scores", exportScores);
-    attachButtonListener("end-trivia", endTrivia);
-    attachButtonListener("start-trivia", startTrivia); 
-    attachButtonListener("save-filters", saveFilters);
-});
+    const debugDiv = createDebugDiv();
 
-// ✅ Twitch Extension Authorization
-window.Twitch.ext.onAuthorized((auth) => {
-    console.log("✅ Twitch Extension Config Page Loaded!");
-    document.getElementById("status").textContent = "✅ Twitch Config Loaded!";
-    window.authToken = auth.token; // ✅ Save token globally
-    window.broadcasterId = auth.channelId;
-    
-    // Load categories and difficulties after auth
-    loadCategories();
-    loadDifficulties();
-    
-    // Load broadcaster's saved settings
-    loadBroadcasterSettings();
-});
+    // Update debug info function
+    const updateDebugInfo = (message, isError = false) => {
+        console.log(isError ? "❌" : "ℹ️", message);
+        debugDiv.innerHTML += `<div style="color: ${isError ? 'red' : 'white'}">${message}</div>`;
+        debugDiv.scrollTop = debugDiv.scrollHeight;
+    };
 
-// Use Twitch EBS to load categories
-function loadCategories() {
-    // Use Twitch's approved API methods instead of direct fetch
-    window.Twitch.ext.rig.log('Requesting categories');
+    // Test direct API call
+    fetch('/api/categories')
+        .then(response => {
+            updateDebugInfo(`Categories API response status: ${response.status}`);
+            return response.json();
+        })
+        .then(data => {
+            updateDebugInfo(`Categories data received`);
+            
+            // Detailed category logging
+            if (data.categories) {
+                updateDebugInfo(`Total Categories: ${data.categories.length}`);
+                data.categories.forEach((category, index) => {
+                    updateDebugInfo(`Category ${index + 1}: 
+                        ID: ${category.id}, 
+                        Name: ${category.name}, 
+                        Questions: ${category.questionCount}`);
+                });
+            } else {
+                updateDebugInfo('No categories found in response', true);
+            }
+        })
+        .catch(error => {
+            updateDebugInfo(`Error fetching categories: ${error.message}`, true);
+        });
     
-    window.Twitch.ext.send('broadcast', 'application/json', {
-        type: 'GET_CATEGORIES',
-        channelId: window.broadcasterId 
+    // Enhanced Twitch API availability check
+    const checkTwitchAPI = () => {
+        return new Promise((resolve, reject) => {
+            try {
+                if (window.Twitch && window.Twitch.ext) {
+                    updateDebugInfo("✅ Twitch Extension API available");
+                    
+                    // Add more detailed checks
+                    updateDebugInfo(`Twitch ext methods: ${Object.keys(window.Twitch.ext).join(', ')}`);
+                    
+                    // Check specific method availability
+                    const requiredMethods = [
+                        'onAuthorized', 
+                        'listen', 
+                        'send', 
+                        'rig'
+                    ];
+                    
+                    requiredMethods.forEach(method => {
+                        if (typeof window.Twitch.ext[method] === 'function') {
+                            updateDebugInfo(`✅ Method ${method} is available`);
+                        } else {
+                            updateDebugInfo(`❌ Method ${method} is NOT available`, true);
+                        }
+                    });
+                    
+                    resolve(true);
+                } else {
+                    updateDebugInfo("❌ Twitch Extension API NOT available", true);
+                    
+                    // Create a comprehensive mock Twitch object for testing
+                    window.Twitch = {
+                        ext: {
+                            onAuthorized: (callback) => {
+                                updateDebugInfo("🔧 Invoking mock Twitch auth");
+                                callback({
+                                    userId: "mock-user-123",
+                                    channelId: "70361469",
+                                    token: "mock-token"
+                                });
+                            },
+                            listen: (type, callback) => {
+                                updateDebugInfo(`🔧 Mock Twitch listen registered for: ${type}`);
+                            },
+                            send: (target, contentType, message) => {
+                                updateDebugInfo(`🔧 Mock Twitch send: ${JSON.stringify({ target, contentType, message })}`);
+                            },
+                            rig: {
+                                log: (message) => {
+                                    updateDebugInfo(`🔧 Mock Rig Log: ${message}`);
+                                }
+                            }
+                        }
+                    };
+                    
+                    resolve(false);
+                }
+            } catch (error) {
+                updateDebugInfo(`❌ Error checking Twitch API: ${error.message}`, true);
+                reject(error);
+            }
+        });
+    };
+
+    // Run Twitch API check
+    checkTwitchAPI()
+        .then(apiAvailable => {
+            if (apiAvailable) {
+                // Simulate authorization for debugging
+                window.Twitch.ext.onAuthorized((auth) => {
+                    updateDebugInfo(`🔑 Authorized with Channel ID: ${auth.channelId}`);
+                    
+                    // Attempt to manually trigger category and difficulty loading
+                    if (typeof loadCategories === 'function') {
+                        updateDebugInfo("🔄 Calling loadCategories()");
+                        loadCategories();
+                    } else {
+                        updateDebugInfo("❌ loadCategories() function not found", true);
+                    }
+                    
+                    if (typeof loadDifficulties === 'function') {
+                        updateDebugInfo("🔄 Calling loadDifficulties()");
+                        loadDifficulties();
+                    } else {
+                        updateDebugInfo("❌ loadDifficulties() function not found", true);
+                    }
+                });
+            }
+        })
+        .catch(error => {
+            updateDebugInfo(`❌ Fatal error in Twitch API check: ${error.message}`, true);
+        });
+
+    // Optional: Add error logging for unhandled promise rejections
+    window.addEventListener('unhandledrejection', (event) => {
+        updateDebugInfo(`🚨 Unhandled Promise Rejection: ${event.reason}`, true);
     });
-    
-    // Listen for the response in the Twitch.ext.listen handler
-    // The server will respond with the categories
-}
+});
 
 // Use Twitch EBS to load difficulties
-function loadDifficulties() {
-    window.Twitch.ext.rig.log('Requesting difficulties');
+// Render category checkboxes
+function renderCategories() {
+    console.log("🔍 Rendering categories. Current categories:", window.trivia.categories);
     
-    window.Twitch.ext.send('broadcast', 'application/json', {
-        type: 'GET_DIFFICULTIES',
-        channelId: window.broadcasterId
+    const container = document.getElementById("categories-list");
+    
+    if (!container) {
+        console.error("❌ Categories container not found!");
+        return;
+    }
+    
+    if (!window.trivia.categories || window.trivia.categories.length === 0) {
+        console.warn("⚠️ No categories to render");
+        container.innerHTML = '<div class="loading">No categories found.</div>';
+        return;
+    }
+    
+    let html = '';
+    window.trivia.categories.forEach(category => {
+        console.log(`📝 Rendering category: ${JSON.stringify(category)}`);
+        html += `
+            <div class="checkbox-item">
+                <input type="checkbox" id="cat-${category.id}" name="category" value="${category.id}">
+                <label for="cat-${category.id}">${category.name || category.id}</label>
+                <span class="checkbox-count">${category.questionCount || 0}</span>
+            </div>
+        `;
     });
     
-    // Listen for the response in the Twitch.ext.listen handler
+    container.innerHTML = html;
+    
+    // Add event listeners to checkboxes
+    document.querySelectorAll('input[name="category"]').forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+            updateSelectedCategories();
+            updateQuestionStats();
+        });
+    });
+    
+    // Update checkboxes based on saved settings
+    updateCategoryCheckboxes();
 }
 
 // Load broadcaster's saved settings via Twitch

@@ -23,6 +23,21 @@ let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-ques
 let questionInProgress = false; // ✅ Prevents multiple questions at once
 let usedQuestions = []; // Avoiding Repeat Questions
 
+const corsOptions = {
+  origin: function (origin, callback) {
+      const allowedOrigins = [
+          // Local development
+          'http://localhost:8080',
+          // Twitch domains
+          'https://twitch.tv',
+          'https://*.ext-twitch.tv',
+          'https://extension-files.twitch.tv',
+          // Your domain (if serving frontend from EC2)
+          'https://loremaster-trivia.com'
+      ];
+    }
+  };
+
 // Create Sequelize instance
 const sequelize = new Sequelize({
   dialect: "mysql",

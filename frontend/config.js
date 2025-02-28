@@ -286,9 +286,17 @@ function attachButtonListener(buttonId, handler) {
     }
 }
 
-// ✅ Base Server URL (Always localhost)
 function getServerURL() {
-    return "http://localhost:5000";
+    // Check if we're in a production environment (Twitch) or local development
+    const isProduction = window.location.hostname !== 'localhost';
+    
+    if (isProduction) {
+        // Use your EC2 domain or IP
+        return "https://loremaster-trivia.com";
+    } else {
+        // For local development
+        return "http://localhost:5000";
+    }
 }
 
 // ✅ Save trivia settings

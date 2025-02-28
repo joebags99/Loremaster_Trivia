@@ -1382,6 +1382,7 @@ app.get("/api/sample-questions", async (req, res) => {
 
 // ✅ Handle Twitch extension message handler
 app.post("/twitch/message", express.json(), async (req, res) => {
+  console.log("🔍 DEBUG - Full request body:", JSON.stringify(req.body));
   try {
     const { channelId, message } = req.body;
     

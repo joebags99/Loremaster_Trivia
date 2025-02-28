@@ -39,7 +39,8 @@ function loadCategories() {
     window.Twitch.ext.rig.log('Requesting categories');
     
     window.Twitch.ext.send('broadcast', 'application/json', {
-        type: 'GET_CATEGORIES'
+        type: 'GET_CATEGORIES',
+        channelId: window.broadcasterId 
     });
     
     // Listen for the response in the Twitch.ext.listen handler
@@ -51,7 +52,8 @@ function loadDifficulties() {
     window.Twitch.ext.rig.log('Requesting difficulties');
     
     window.Twitch.ext.send('broadcast', 'application/json', {
-        type: 'GET_DIFFICULTIES'
+        type: 'GET_DIFFICULTIES',
+        channelId: window.broadcasterId
     });
     
     // Listen for the response in the Twitch.ext.listen handler
@@ -85,8 +87,8 @@ window.Twitch.ext.listen('broadcast', (target, contentType, message) => {
                 triviaSettings.answerTime = data.answerTime || triviaSettings.answerTime;
                 triviaSettings.intervalTime = data.intervalTime || triviaSettings.intervalTime;
                 break;
-
-            case "CATEGORIES_RESPONSE":
+                
+            case "CATEGORIES_RESPONSE":  // Make sure you're listening for response types
                 console.log("📚 Received categories:", data);
                 window.trivia.categories = data.categories || [];
                 renderCategories();
@@ -101,15 +103,14 @@ window.Twitch.ext.listen('broadcast', (target, contentType, message) => {
             case "BROADCASTER_SETTINGS_RESPONSE":
                 console.log("⚙️ Received broadcaster settings:", data);
                 if (data.settings) {
-                    window.trivia.selectedCategories = data.settings.active_categories || [];
-                    window.trivia.selectedDifficulties = data.settings.active_difficulties || [];
-                    
-                    // Update UI
-                    setTimeout(() => {
-                        updateCategoryCheckboxes();
-                        updateDifficultyCheckboxes();
-                        updateQuestionStats();
-                    }, 500);
+                window.trivia.selectedCategories = data.settings.active_categories || [];
+                window.trivia.selectedDifficulties = data.settings.active_difficulties || [];
+                // Update UI
+                setTimeout(() => {
+                    updateCategoryCheckboxes();
+                    updateDifficultyCheckboxes();
+                    updateQuestionStats();
+                }, 500);
                 }
                 break;
 

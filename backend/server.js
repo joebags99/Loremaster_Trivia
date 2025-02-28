@@ -417,9 +417,10 @@ app.use((req, res, next) => {
     connect-src 'self' https://*.twitch.tv https://*.ext-twitch.tv wss://pubsub-edge.twitch.tv https://api.twitch.tv;
     img-src 'self' https://*.twitch.tv https://*.ext-twitch.tv data:;
     script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.twitch.tv https://*.ext-twitch.tv;
-    style-src 'self' 'unsafe-inline' https://*.twitch.tv https://*.ext-twitch.tv;
+    style-src 'self' 'unsafe-inline' https://*.twitch.tv https://*.ext-twitch.tv https://fonts.googleapis.com;
+    font-src 'self' https://fonts.gstatic.com;
   `.replace(/\s+/g, ' ').trim());
-  
+
   next();
 });
 

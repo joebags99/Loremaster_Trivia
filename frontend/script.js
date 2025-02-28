@@ -122,7 +122,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
     }
 });
 
-f// Update fetchUserScore function to handle both scores
+// Update fetchUserScore function to handle both scores
 function fetchUserScore(userId) {
     if (!userId) {
         console.warn("⚠ Cannot fetch score: User ID is missing");

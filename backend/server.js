@@ -67,6 +67,14 @@ const corsOptions = {
   maxAge: 86400 // 24 hours
 };
 
+// Handle OPTIONS requests for CORS preflight
+app.options('*', cors(corsOptions));
+
+// Add specific options handler for the Twitch message endpoint
+app.options('/twitch/message', cors(corsOptions), (req, res) => {
+  res.status(204).send();
+});
+
 // Create Sequelize instance
 const sequelize = new Sequelize({
   dialect: "mysql",

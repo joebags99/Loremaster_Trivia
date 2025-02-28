@@ -75,7 +75,7 @@ function loadBroadcasterSettings() {
 }
 
 // Add a listener for responses from the backend
-window.Twitch.ext.listen('broadcast', (target, contentType, message) => {
+window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
     console.log("📩 Received broadcast:", message);
     try {
         const data = JSON.parse(message);
@@ -86,32 +86,6 @@ window.Twitch.ext.listen('broadcast', (target, contentType, message) => {
                 console.log("⚙️ Updating Settings:", data);
                 triviaSettings.answerTime = data.answerTime || triviaSettings.answerTime;
                 triviaSettings.intervalTime = data.intervalTime || triviaSettings.intervalTime;
-                break;
-                
-            case "CATEGORIES_RESPONSE":  // Make sure you're listening for response types
-                console.log("📚 Received categories:", data);
-                window.trivia.categories = data.categories || [];
-                renderCategories();
-                break;
-                
-            case "DIFFICULTIES_RESPONSE":
-                console.log("🔄 Received difficulties:", data);
-                window.trivia.difficulties = data.difficulties || [];
-                renderDifficulties();
-                break;
-                
-            case "BROADCASTER_SETTINGS_RESPONSE":
-                console.log("⚙️ Received broadcaster settings:", data);
-                if (data.settings) {
-                window.trivia.selectedCategories = data.settings.active_categories || [];
-                window.trivia.selectedDifficulties = data.settings.active_difficulties || [];
-                // Update UI
-                setTimeout(() => {
-                    updateCategoryCheckboxes();
-                    updateDifficultyCheckboxes();
-                    updateQuestionStats();
-                }, 500);
-                }
                 break;
 
             case "TRIVIA_START":
@@ -150,16 +124,20 @@ window.Twitch.ext.listen('broadcast', (target, contentType, message) => {
                 setUIState("ended");
                 break;
 
-            case "QUESTION_STATS_RESPONSE":
-                console.log("📊 Received question stats:", data);
-                window.trivia.totalQuestions = data.totalMatching || 0;
-                updateQuestionStatsDisplay(data);
+            // Add these new case handlers
+            case "GET_CATEGORIES":
+                console.log("📚 Received request for categories");
+                loadCategories();
                 break;
 
-            case "FILTERS_SAVED":
-                console.log("💾 Filters saved response:", data);
-                document.getElementById("status").textContent = "✅ Question filters saved!";
-                updateQuestionStats();
+            case "GET_DIFFICULTIES":
+                console.log("🔄 Received request for difficulties");
+                loadDifficulties();
+                break;
+
+            case "GET_BROADCASTER_SETTINGS":
+                console.log("⚙️ Received request for broadcaster settings");
+                loadBroadcasterSettings();
                 break;
 
             default:

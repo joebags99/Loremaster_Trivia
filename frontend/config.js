@@ -1,159 +1,3 @@
-document.addEventListener("DOMContentLoaded", function() {
-    console.log("🔍 Debug script loaded");
-    
-    // Global debug div for persistent messaging
-    const createDebugDiv = () => {
-        const debugDiv = document.createElement('div');
-        debugDiv.id = 'debug-info-panel';
-        debugDiv.style.position = 'fixed';
-        debugDiv.style.bottom = '10px';
-        debugDiv.style.right = '10px';
-        debugDiv.style.background = 'rgba(0,0,0,0.8)';
-        debugDiv.style.color = '#fff';
-        debugDiv.style.padding = '15px';
-        debugDiv.style.borderRadius = '5px';
-        debugDiv.style.zIndex = '9999';
-        debugDiv.style.maxWidth = '300px';
-        debugDiv.style.wordWrap = 'break-word';
-        debugDiv.style.fontFamily = 'monospace';
-        document.body.appendChild(debugDiv);
-        return debugDiv;
-    };
-
-    const debugDiv = createDebugDiv();
-
-    // Update debug info function
-    const updateDebugInfo = (message, isError = false) => {
-        console.log(isError ? "❌" : "ℹ️", message);
-        debugDiv.innerHTML += `<div style="color: ${isError ? 'red' : 'white'}">${message}</div>`;
-        debugDiv.scrollTop = debugDiv.scrollHeight;
-    };
-
-    // Test direct API call
-    fetch('/api/categories')
-        .then(response => {
-            updateDebugInfo(`Categories API response status: ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            updateDebugInfo(`Categories data received`);
-            
-            // Detailed category logging
-            if (data.categories) {
-                updateDebugInfo(`Total Categories: ${data.categories.length}`);
-                data.categories.forEach((category, index) => {
-                    updateDebugInfo(`Category ${index + 1}: 
-                        ID: ${category.id}, 
-                        Name: ${category.name}, 
-                        Questions: ${category.questionCount}`);
-                });
-            } else {
-                updateDebugInfo('No categories found in response', true);
-            }
-        })
-        .catch(error => {
-            updateDebugInfo(`Error fetching categories: ${error.message}`, true);
-        });
-    
-    // Enhanced Twitch API availability check
-    const checkTwitchAPI = () => {
-        return new Promise((resolve, reject) => {
-            try {
-                if (window.Twitch && window.Twitch.ext) {
-                    updateDebugInfo("✅ Twitch Extension API available");
-                    
-                    // Add more detailed checks
-                    updateDebugInfo(`Twitch ext methods: ${Object.keys(window.Twitch.ext).join(', ')}`);
-                    
-                    // Check specific method availability
-                    const requiredMethods = [
-                        'onAuthorized', 
-                        'listen', 
-                        'send', 
-                        'rig'
-                    ];
-                    
-                    requiredMethods.forEach(method => {
-                        if (typeof window.Twitch.ext[method] === 'function') {
-                            updateDebugInfo(`✅ Method ${method} is available`);
-                        } else {
-                            updateDebugInfo(`❌ Method ${method} is NOT available`, true);
-                        }
-                    });
-                    
-                    resolve(true);
-                } else {
-                    updateDebugInfo("❌ Twitch Extension API NOT available", true);
-                    
-                    // Create a comprehensive mock Twitch object for testing
-                    window.Twitch = {
-                        ext: {
-                            onAuthorized: (callback) => {
-                                updateDebugInfo("🔧 Invoking mock Twitch auth");
-                                callback({
-                                    userId: "mock-user-123",
-                                    channelId: "70361469",
-                                    token: "mock-token"
-                                });
-                            },
-                            listen: (type, callback) => {
-                                updateDebugInfo(`🔧 Mock Twitch listen registered for: ${type}`);
-                            },
-                            send: (target, contentType, message) => {
-                                updateDebugInfo(`🔧 Mock Twitch send: ${JSON.stringify({ target, contentType, message })}`);
-                            },
-                            rig: {
-                                log: (message) => {
-                                    updateDebugInfo(`🔧 Mock Rig Log: ${message}`);
-                                }
-                            }
-                        }
-                    };
-                    
-                    resolve(false);
-                }
-            } catch (error) {
-                updateDebugInfo(`❌ Error checking Twitch API: ${error.message}`, true);
-                reject(error);
-            }
-        });
-    };
-
-    // Run Twitch API check
-    checkTwitchAPI()
-        .then(apiAvailable => {
-            if (apiAvailable) {
-                // Simulate authorization for debugging
-                window.Twitch.ext.onAuthorized((auth) => {
-                    updateDebugInfo(`🔑 Authorized with Channel ID: ${auth.channelId}`);
-                    
-                    // Attempt to manually trigger category and difficulty loading
-                    if (typeof loadCategories === 'function') {
-                        updateDebugInfo("🔄 Calling loadCategories()");
-                        loadCategories();
-                    } else {
-                        updateDebugInfo("❌ loadCategories() function not found", true);
-                    }
-                    
-                    if (typeof loadDifficulties === 'function') {
-                        updateDebugInfo("🔄 Calling loadDifficulties()");
-                        loadDifficulties();
-                    } else {
-                        updateDebugInfo("❌ loadDifficulties() function not found", true);
-                    }
-                });
-            }
-        })
-        .catch(error => {
-            updateDebugInfo(`❌ Fatal error in Twitch API check: ${error.message}`, true);
-        });
-
-    // Optional: Add error logging for unhandled promise rejections
-    window.addEventListener('unhandledrejection', (event) => {
-        updateDebugInfo(`🚨 Unhandled Promise Rejection: ${event.reason}`, true);
-    });
-});
-
 // Use Twitch EBS to load difficulties
 // Render category checkboxes
 function renderCategories() {
@@ -213,6 +57,57 @@ function loadBroadcasterSettings() {
     // Listen for the response in the Twitch.ext.listen handler
 }
 
+// Add these functions before the window.Twitch.ext.listen block
+function loadCategories() {
+    console.log("🔍 Loading categories");
+    
+    // Fetch categories directly from the API
+    fetch('/api/categories')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("📚 Categories received:", data);
+            
+            // Store categories in global state
+            window.trivia.categories = data.categories || [];
+            
+            // Render categories
+            renderCategories();
+        })
+        .catch(error => {
+            console.error("❌ Error loading categories:", error);
+        });
+}
+
+function loadDifficulties() {
+    console.log("🔍 Loading difficulties");
+    
+    // Fetch difficulties directly from the API
+    fetch('/api/difficulties')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("🔄 Difficulties received:", data);
+            
+            // Store difficulties in global state
+            window.trivia.difficulties = data.difficulties || [];
+            
+            // Render difficulties
+            renderDifficulties();
+        })
+        .catch(error => {
+            console.error("❌ Error loading difficulties:", error);
+        });
+}
+
 // Add a listener for responses from the backend
 window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
     console.log("📩 Received broadcast:", message);
@@ -263,7 +158,37 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                 setUIState("ended");
                 break;
 
-            // Add these new case handlers
+            case "CATEGORIES_RESPONSE":
+                console.log("📚 Categories received:", data.categories);
+                // Store categories in global state
+                window.trivia.categories = data.categories || [];
+                
+                // Render categories
+                renderCategories();
+                break;
+
+            case "DIFFICULTIES_RESPONSE":
+                console.log("🔄 Difficulties received:", data.difficulties);
+                // Store difficulties in global state
+                window.trivia.difficulties = data.difficulties || [];
+                
+                // Render difficulties
+                renderDifficulties();
+                break;
+
+            case "QUESTION_STATS_RESPONSE":
+                console.log("📊 Question stats received:", data);
+                // Update total questions and display stats
+                window.trivia.totalQuestions = data.totalMatching || 0;
+                updateQuestionStatsDisplay(data);
+                break;
+
+            case "FILTERS_SAVED":
+                console.log("💾 Filters saved:", data);
+                // Optionally update UI or show a success message
+                document.getElementById("status").textContent = data.message || "Filters saved successfully!";
+                break;
+
             case "GET_CATEGORIES":
                 console.log("📚 Received request for categories");
                 loadCategories();
@@ -535,44 +460,129 @@ function endTrivia() {
     disableSettings(false); // ✅ Unlock settings when trivia ends
 }
 
+// DOMContentLoaded for Debugging purposes
 document.addEventListener("DOMContentLoaded", function() {
     console.log("🔍 Debug script loaded");
-    
+
+    // Initialize global trivia state
+    window.trivia = {
+        categories: [],
+        difficulties: [],
+        selectedCategories: [],
+        selectedDifficulties: [],
+        totalQuestions: 0
+    };
+
+    // Global debug div for persistent messaging
+    const createDebugDiv = () => {
+        const debugDiv = document.createElement('div');
+        debugDiv.id = 'debug-info-panel';
+        debugDiv.style.position = 'fixed';
+        debugDiv.style.bottom = '10px';
+        debugDiv.style.right = '10px';
+        debugDiv.style.background = 'rgba(0,0,0,0.8)';
+        debugDiv.style.color = '#fff';
+        debugDiv.style.padding = '15px';
+        debugDiv.style.borderRadius = '5px';
+        debugDiv.style.zIndex = '9999';
+        debugDiv.style.maxWidth = '300px';
+        debugDiv.style.wordWrap = 'break-word';
+        debugDiv.style.fontFamily = 'monospace';
+        document.body.appendChild(debugDiv);
+        return debugDiv;
+    };
+
+    const debugDiv = createDebugDiv();
+
+    // Update debug info function
+    const updateDebugInfo = (message, isError = false) => {
+        console.log(isError ? "❌" : "ℹ️", message);
+        debugDiv.innerHTML += `<div style="color: ${isError ? 'red' : 'white'}">${message}</div>`;
+        debugDiv.scrollTop = debugDiv.scrollHeight;
+    };
+
     // Test direct API call
     fetch('/api/categories')
         .then(response => {
-            console.log("🔄 Categories API response status:", response.status);
+            updateDebugInfo(`Categories API response status: ${response.status}`);
             return response.json();
         })
         .then(data => {
-            console.log("📊 Categories data:", data);
-            // Display categories count in the UI for debugging
-            const debugDiv = document.createElement('div');
-            debugDiv.style.position = 'fixed';
-            debugDiv.style.bottom = '10px';
-            debugDiv.style.right = '10px';
-            debugDiv.style.background = 'rgba(0,0,0,0.7)';
-            debugDiv.style.color = '#fff';
-            debugDiv.style.padding = '10px';
-            debugDiv.style.borderRadius = '5px';
-            debugDiv.style.zIndex = '9999';
+            updateDebugInfo(`Categories data received`);
             
-            const count = data.categories ? data.categories.length : 0;
-            debugDiv.textContent = `Categories found: ${count}`;
-            document.body.appendChild(debugDiv);
+            // Detailed category logging
+            if (data.categories) {
+                updateDebugInfo(`Total Categories: ${data.categories.length}`);
+                data.categories.forEach((category, index) => {
+                    updateDebugInfo(`Category ${index + 1}: 
+                        ID: ${category.id}, 
+                        Name: ${category.name}, 
+                        Questions: ${category.questionCount}`);
+                });
+                
+                // Display categories count in the UI for debugging
+                const countDiv = document.createElement('div');
+                countDiv.style.position = 'fixed';
+                countDiv.style.bottom = '10px';
+                countDiv.style.right = '10px';
+                countDiv.style.background = 'rgba(0,0,0,0.7)';
+                countDiv.style.color = '#fff';
+                countDiv.style.padding = '10px';
+                countDiv.style.borderRadius = '5px';
+                countDiv.style.zIndex = '9999';
+                
+                countDiv.textContent = `Categories found: ${data.categories.length}`;
+                document.body.appendChild(countDiv);
+            } else {
+                updateDebugInfo('No categories found in response', true);
+            }
         })
         .catch(error => {
-            console.error("❌ Error fetching categories:", error);
-            
-            // Try an absolute URL instead
-            console.log("🔄 Trying with absolute URL...");
-            fetch('https://loremaster-trivia.com/api/categories')
-                .then(response => response.json())
-                .then(data => console.log("📊 Categories data (absolute URL):", data))
-                .catch(err => console.error("❌ Still failed:", err));
+            updateDebugInfo(`Error fetching categories: ${error.message}`, true);
         });
     
-    // Check Twitch API availability
+    // Enhanced Twitch API availability check
+    const checkTwitchAPI = () => {
+        // ... (existing checkTwitchAPI function remains the same)
+    };
+
+    // Run Twitch API check
+    checkTwitchAPI()
+        .then(apiAvailable => {
+            if (apiAvailable) {
+                // Simulate authorization for debugging
+                window.Twitch.ext.onAuthorized((auth) => {
+                    updateDebugInfo(`🔑 Authorized with Channel ID: ${auth.channelId}`);
+                    
+                    window.broadcasterId = auth.channelId;
+                    
+                    // Attempt to manually trigger category and difficulty loading
+                    if (typeof loadCategories === 'function') {
+                        updateDebugInfo("🔄 Calling loadCategories()");
+                        loadCategories();
+                    } else {
+                        updateDebugInfo("❌ loadCategories() function not found", true);
+                    }
+                    
+                    if (typeof loadDifficulties === 'function') {
+                        updateDebugInfo("🔄 Calling loadDifficulties()");
+                        loadDifficulties();
+                    } else {
+                        updateDebugInfo("❌ loadDifficulties() function not found", true);
+                    }
+                });
+            }
+        })
+        .catch(error => {
+            updateDebugInfo(`❌ Fatal error in Twitch API check: ${error.message}`, true);
+        });
+
+    // Optional: Add error logging for unhandled promise rejections
+    window.addEventListener('unhandledrejection', (event) => {
+        updateDebugInfo(`🚨 Unhandled Promise Rejection: ${event.reason}`, true);
+    });
+
+    // Check Twitch API availability (existing code)
     if (window.Twitch && window.Twitch.ext) {
         console.log("✅ Twitch Extension API available");
     } else {

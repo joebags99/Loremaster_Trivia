@@ -132,16 +132,33 @@ function createMockTwitchForTesting() {
 function loadCategories() {
     console.log("🔍 Loading categories");
     
-    // First try the direct API approach
-    fetch('/api/categories')
+    // First try the test endpoint to verify connectivity
+    fetch('/api/test')
         .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
+            console.log(`Test API status: ${response.status}`);
+            return response.text(); // Use text() instead of json() for debugging
         })
-        .then(data => {
-            console.log("📚 Categories received:", data);
+        .then(text => {
+            console.log("Test API response:", text);
+            
+            // Now try the categories endpoint
+            return fetch('/api/categories');
+        })
+        .then(response => {
+            console.log(`Categories API status: ${response.status}`);
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error(`API error response: ${text}`);
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text}`);
+                });
+            }
+            return response.text(); // Get the raw text first for debugging
+        })
+        .then(text => {
+            console.log("Raw categories response:", text);
+            // Now parse as JSON
+            const data = JSON.parse(text);
+            console.log("Parsed categories data:", data);
             
             // Store categories in global state
             window.trivia.categories = data.categories || [];
@@ -150,7 +167,7 @@ function loadCategories() {
             renderCategories();
         })
         .catch(error => {
-            console.error("❌ Error loading categories directly:", error);
+            console.error("❌ Error loading categories:", error);
             
             // Fall back to Twitch messaging approach
             console.log("🔄 Trying Twitch messaging for categories");

@@ -1260,12 +1260,26 @@ app.get("/get-next-question", async (req, res) => {
 
 // Get all available categories
 app.get("/api/categories", async (req, res) => {
+  // Set explicit CORS headers to make sure they're properly applied
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
   try {
+    console.log(`🔍 Getting categories from database...`);
+    
     // Get unique categories from the questions table
     const categories = await sequelize.query(
       "SELECT DISTINCT category_id FROM trivia_questions ORDER BY category_id",
       { type: sequelize.QueryTypes.SELECT }
     );
+    
+    if (!categories || categories.length === 0) {
+      console.log("⚠️ No categories found in database");
+      return res.json({ categories: [] });
+    }
+    
+    console.log(`✅ Found ${categories.length} categories`);
     
     // Count questions in each category
     const categoriesWithCounts = await Promise.all(categories.map(async (category) => {
@@ -1280,11 +1294,23 @@ app.get("/api/categories", async (req, res) => {
       };
     }));
     
+    console.log(`✅ Returning ${categoriesWithCounts.length} categories with counts`);
     res.json({ categories: categoriesWithCounts });
   } catch (error) {
     console.error("❌ Error getting categories:", error);
-    res.status(500).json({ error: "Failed to get categories" });
+    res.status(500).json({ error: "Failed to get categories", message: error.message });
   }
+});
+
+// Simple test endpoint for debugging
+app.get("/api/test", (req, res) => {
+  // Set explicit CORS headers
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  console.log("✅ Test endpoint called successfully");
+  res.json({ success: true, message: "API is working correctly" });
 });
 
 // Get all available difficulties

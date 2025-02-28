@@ -280,15 +280,46 @@ async function getRandomQuestionFromDB(categories = [], difficulties = []) {
       whereClause.difficulty = difficulties;
     }
     
+    // ✅ UPDATED: Add exclusion for already used questions if any exist
+    if (usedQuestions.length > 0) {
+      whereClause.id = {
+        [Sequelize.Op.notIn]: usedQuestions
+      };
+    }
+    
     const question = await TriviaQuestion.findOne({
       where: whereClause,
       order: sequelize.literal('RAND()')
     });
     
+    // If no question is found with the filters AND exclusions
     if (!question) {
-      console.warn("⚠️ No questions found with the specified filters");
+      console.warn("⚠️ No unused questions match the filters");
+      
+      // If we have used questions, check if we should reset
+      if (usedQuestions.length > 0) {
+        console.log(`📊 All questions in this filter set have been used (${usedQuestions.length} questions)`);
+        
+        // If we've used a significant number of questions (10+), reset and try again
+        if (usedQuestions.length > 10) {
+          console.log("🔄 Resetting used questions tracking");
+          usedQuestions = []; // Reset used questions
+          
+          // Try again without the exclusion
+          return getRandomQuestionFromDB(categories, difficulties);
+        } else {
+          // For small question sets, try without filters rather than resetting
+          return getRandomQuestionFromDB();
+        }
+      }
+      
+      // If we still don't have a question, return null
       return null;
     }
+    
+    // ✅ UPDATED: Add this question ID to used questions array
+    usedQuestions.push(question.id);
+    console.log(`📝 Added question ID ${question.id} to used questions list. Total used: ${usedQuestions.length}`);
     
     return {
       id: question.id,
@@ -385,6 +416,9 @@ app.post("/start-trivia", async (req, res) => {
   try {
       // Set triviaActive first to prevent race conditions
       triviaActive = true;
+
+      usedQuestions = [];
+      console.log("🔄 Used questions list reset upon trivia start");
 
       const token = generateToken();
       const startPayload = {
@@ -922,6 +956,10 @@ app.post("/end-trivia", (req, res) => {
   triviaRoundEndTime = 0;
   nextQuestionTime = null;
   
+  // ✅ UPDATED: Clear used questions when trivia ends
+  usedQuestions = [];
+  console.log("🔄 Used questions list cleared upon trivia end");
+
   // Reset session scores when trivia ends
   Object.keys(userSessionScores).forEach(key => {
     userSessionScores[key] = 0;

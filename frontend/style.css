@@ -166,6 +166,57 @@ h2, p, #question-text {
     opacity: 0.7;
 }
 
+/* Difficulty indicator styling */
+.difficulty-indicator {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: white;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.difficulty-indicator.easy {
+    background-color: #4CAF50; /* Green */
+}
+
+.difficulty-indicator.medium {
+    background-color: #FF9800; /* Orange */
+}
+
+.difficulty-indicator.hard {
+    background-color: #F44336; /* Red */
+}
+
+/* Points info styling */
+.points-info {
+    margin-top: 15px;
+    font-weight: bold;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+.points-info .points {
+    color: gold;
+    font-size: 1.2rem;
+    display: block;
+    text-shadow: 0 0 5px rgba(255, 215, 0, 0.7);
+}
+
+.points-info .time-bonus {
+    color: lightgreen;
+    font-size: 0.9rem;
+    display: block;
+    margin-top: 5px;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* ✅ Responsive Fix for Twitch iframe Scaling */
 @media (max-width: 600px) {
     #quiz-container {

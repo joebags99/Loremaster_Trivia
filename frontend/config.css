@@ -81,6 +81,74 @@ input[type="file"] {
     max-width: 100%;
 }
 
+/* NEW: Checkbox Styles */
+.checkbox-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+.checkbox-item {
+    background: rgba(60, 40, 20, 0.8);
+    border: 1px solid #c4a484;
+    border-radius: 8px;
+    padding: 8px 15px;
+    margin: 5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.checkbox-item:hover {
+    background: rgba(80, 60, 40, 0.8);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+.checkbox-item input[type="checkbox"] {
+    width: auto;
+    margin-right: 8px;
+    cursor: pointer;
+    accent-color: #ffcc00;
+}
+
+.checkbox-item label {
+    display: inline;
+    margin: 0;
+    cursor: pointer;
+}
+
+.checkbox-count {
+    font-size: 0.8rem;
+    color: #ffcc00;
+    margin-left: 5px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    padding: 2px 6px;
+}
+
+/* NEW: Question Stats */
+#question-stats {
+    background: rgba(40, 30, 20, 0.8);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    font-weight: bold;
+    color: #ffcc00;
+    text-shadow: 1px 1px 3px black;
+}
+
+/* Loading indicator */
+.loading {
+    color: #c4a484;
+    font-style: italic;
+    margin: 10px 0;
+}
+
 /* 🔘 Buttons */
 button {
     background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
@@ -147,5 +215,13 @@ button:hover {
 
     input {
         width: 100%;
+    }
+    
+    .checkbox-container {
+        gap: 5px;
+    }
+    
+    .checkbox-item {
+        padding: 6px 10px;
     }
 }

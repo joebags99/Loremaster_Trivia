@@ -21,11 +21,38 @@
         <button id="save-settings">💾 Save Settings</button>
     </fieldset>
 
-    <!-- ✅ Trivia CSV Upload -->
+<!-- Old Trivia CSV Upload for future use from an old version -->
+<!-- <fieldset> -->
+    <!-- <legend>📂 Manage Trivia Questions</legend> -->
+    <!--<input type="file" id="upload-trivia" accept=".csv"> -->
+    <!-- <button id="upload-btn">📤 Upload CSV</button> -->
+<!-- </fieldset> -->
+
+    <!-- NEW: Trivia Categories -->
+    <fieldset id="categories-container">
+        <legend>📚 Trivia Categories</legend>
+        <div class="checkbox-container" id="categories-list">
+            <!-- Categories will be loaded here dynamically -->
+            <div class="loading">Loading categories...</div>
+        </div>
+    </fieldset>
+
+    <!-- NEW: Trivia Difficulties -->
+    <fieldset id="difficulties-container">
+        <legend>🔄 Trivia Difficulties</legend>
+        <div class="checkbox-container" id="difficulties-list">
+            <!-- Difficulties will be loaded here dynamically -->
+            <div class="loading">Loading difficulties...</div>
+        </div>
+    </fieldset>
+
+    <!-- NEW: Button to save category and difficulty preferences -->
     <fieldset>
-        <legend>📂 Manage Trivia Questions</legend>
-        <input type="file" id="upload-trivia" accept=".csv">
-        <button id="upload-btn">📤 Upload CSV</button>
+        <legend>🎯 Question Filters</legend>
+        <div id="question-stats">
+            Loading question statistics...
+        </div>
+        <button id="save-filters">💾 Save Question Filters</button>
     </fieldset>
 
     <!-- ✅ Score Management -->

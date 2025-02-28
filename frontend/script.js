@@ -3,11 +3,14 @@ let userId = null;             // Twitch user ID
 let questionStartTime = null;  // Timestamp when the current trivia question is shown
 let triviaActive = false;      // Flag indicating an active trivia round
 let nextQuestionTime = null;   // Track next trivia question time
+let lastAnswerData = null;     // Removes the last answer difficulty tab
 let questionRequested = false; // Prevents multiple requests
 let triviaSettings = {
     answerTime: 30000,     // Default 30 seconds
     intervalTime: 600000   // Default 10 minutes
 };
+let currentQuestionDifficulty = null; // Stores current question difficulty
+let currentQuestionDuration = null;   // Stores current question duration
 
 // Retrieve Twitch User ID on authorization and fetch user score
 window.Twitch.ext.onAuthorized((auth) => {
@@ -218,6 +221,10 @@ function displayQuestion(data) {
     // Calculate duration with fallback
     const duration = data.duration || triviaSettings.answerTime || 30000;
     
+    // Store current question information globally
+    currentQuestionDifficulty = data.difficulty || 'Medium';
+    currentQuestionDuration = duration;
+    
     triviaActive = true;
     questionStartTime = Date.now();
     questionRequested = false; // Reset flag
@@ -229,6 +236,18 @@ function displayQuestion(data) {
     // Reset timer bar
     timerBar.style.transition = "none";
     timerBar.style.width = "100%";
+
+    // Remove any existing difficulty indicators
+    const existingIndicators = document.querySelectorAll('.difficulty-indicator');
+    existingIndicators.forEach(indicator => indicator.remove());
+
+    // Add difficulty indicator if available
+    if (data.difficulty) {
+        const difficultyIndicator = document.createElement("div");
+        difficultyIndicator.className = "difficulty-indicator " + data.difficulty.toLowerCase();
+        difficultyIndicator.textContent = data.difficulty;
+        questionText.parentNode.insertBefore(difficultyIndicator, questionText);
+    }
 
     // Create buttons for each choice
     data.choices.forEach((choice) => {
@@ -299,6 +318,20 @@ function startTriviaTimer(duration, correctAnswer) {
             btn.disabled = true;
         });
 
+        // Now that timer has ended, show points info if we have it
+        if (lastAnswerData && lastAnswerData.pointsEarned > 0) {
+            const pointsInfo = document.createElement("div");
+            pointsInfo.className = "points-info";
+            pointsInfo.innerHTML = `
+                <span class="points">+${lastAnswerData.pointsEarned} points!</span>
+                <span class="time-bonus">${lastAnswerData.timePercentage}% time bonus</span>
+            `;
+            lastAnswerData.button.parentNode.appendChild(pointsInfo);
+            
+            // Clear the data after using it
+            lastAnswerData = null;
+        }
+
         console.log("🔄 Returning to countdown screen in 5 seconds...");
 
         // After 5 seconds, transition back to countdown screen
@@ -353,7 +386,7 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
 
     // Calculate response time
     const answerTime = Date.now() - questionStartTime;
-    console.log(`📩 User ${userId} answered in ${answerTime}ms`);
+    console.log(`📩 User ${userId} answered in ${answerTime}ms (Difficulty: ${currentQuestionDifficulty})`);
 
     // Submit answer to server
     fetch("/submit-answer", {
@@ -363,13 +396,24 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
             userId,
             selectedAnswer: selectedChoice,
             correctAnswer,
-            answerTime
+            answerTime,
+            difficulty: currentQuestionDifficulty,
+            duration: currentQuestionDuration
         }),
     })
     .then(response => response.json())
     .then(data => {
         console.log("🏆 Score updated!", data);
         displayScore(data.totalScore);
+        
+        // Store the answer data for later display when timer ends
+        if (data.pointsEarned > 0) {
+            lastAnswerData = {
+                button: button,
+                pointsEarned: data.pointsEarned,
+                timePercentage: data.timePercentage
+            };
+        }
     })
     .catch(error => console.error("❌ Error submitting answer:", error));
 }

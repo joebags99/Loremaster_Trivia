@@ -402,6 +402,16 @@ app.use(express.json());
 
 // Add security headers
 app.use((req, res, next) => {
+  // Log all API requests for debugging
+  if (req.path.startsWith('/api/')) {
+    console.log(`📝 API Request: ${req.method} ${req.path}`);
+}
+
+// Check if this might be a categories request with wrong path
+if (req.path === '/categories' || req.path === '/difficulties') {
+    console.log(`🔄 Redirecting ${req.path} to /api${req.path}`);
+    return res.redirect(`/api${req.path}`);
+}
   // Prevent browsers from incorrectly detecting non-scripts as scripts
   res.setHeader('X-Content-Type-Options', 'nosniff');
   

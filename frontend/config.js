@@ -396,6 +396,71 @@ function endTrivia() {
     disableSettings(false); // ✅ Unlock settings when trivia ends
 }
 
+document.addEventListener("DOMContentLoaded", function() {
+    console.log("🔍 Debug script loaded");
+    
+    // Test direct API call
+    fetch('/api/categories')
+        .then(response => {
+            console.log("🔄 Categories API response status:", response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log("📊 Categories data:", data);
+            // Display categories count in the UI for debugging
+            const debugDiv = document.createElement('div');
+            debugDiv.style.position = 'fixed';
+            debugDiv.style.bottom = '10px';
+            debugDiv.style.right = '10px';
+            debugDiv.style.background = 'rgba(0,0,0,0.7)';
+            debugDiv.style.color = '#fff';
+            debugDiv.style.padding = '10px';
+            debugDiv.style.borderRadius = '5px';
+            debugDiv.style.zIndex = '9999';
+            
+            const count = data.categories ? data.categories.length : 0;
+            debugDiv.textContent = `Categories found: ${count}`;
+            document.body.appendChild(debugDiv);
+        })
+        .catch(error => {
+            console.error("❌ Error fetching categories:", error);
+            
+            // Try an absolute URL instead
+            console.log("🔄 Trying with absolute URL...");
+            fetch('https://loremaster-trivia.com/api/categories')
+                .then(response => response.json())
+                .then(data => console.log("📊 Categories data (absolute URL):", data))
+                .catch(err => console.error("❌ Still failed:", err));
+        });
+    
+    // Check Twitch API availability
+    if (window.Twitch && window.Twitch.ext) {
+        console.log("✅ Twitch Extension API available");
+    } else {
+        console.log("❌ Twitch Extension API NOT available");
+        
+        // Create a mock Twitch object for testing
+        window.Twitch = {
+            ext: {
+                onAuthorized: (callback) => {
+                    console.log("🔧 Mock Twitch auth");
+                    callback({
+                        userId: "mock-user-123",
+                        channelId: "70361469",
+                        token: "mock-token"
+                    });
+                },
+                listen: (type, callback) => {
+                    console.log("🔧 Mock Twitch listen registered for:", type);
+                },
+                send: (target, contentType, message) => {
+                    console.log("🔧 Mock Twitch send:", { target, contentType, message });
+                }
+            }
+        };
+    }
+});
+
 // ✅ Function to Enable/Disable Settings
 function disableSettings(isDisabled) {
     document.getElementById("answer-time").disabled = isDisabled;

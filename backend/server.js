@@ -14,6 +14,9 @@ const { Console } = require("console");
 const { Sequelize, DataTypes } = require("sequelize");
 const PORT = process.env.PORT || 5000; // default port
 
+// Initialize Express app - MOVED THIS UP to avoid reference error
+const app = express();
+
 // Global state variables
 const usersScores = {}; // Stores scores { "twitchUserID": score }
 const userSessionScores = {}; // Stores session scores { "twitchUserID": score }
@@ -67,7 +70,7 @@ const corsOptions = {
   maxAge: 86400 // 24 hours
 };
 
-// Handle OPTIONS requests for CORS preflight
+// Handle OPTIONS requests for CORS preflight - NOW app is defined before using it
 app.options('*', cors(corsOptions));
 
 // Add specific options handler for the Twitch message endpoint
@@ -387,8 +390,12 @@ async function getRandomQuestionFromDB(categories = [], difficulties = []) {
   }
 }
 
-// Initialize Express app
-const app = express();
+// REMOVED: Initialize Express app - Already initialized at the top of the file
+// app.use(express.static(path.join(__dirname, "frontend"))); // Serve frontend via Express
+// app.use(cors());
+// app.use(express.json());
+
+// Use Express middleware
 app.use(express.static(path.join(__dirname, "frontend"))); // Serve frontend via Express
 app.use(cors());
 app.use(express.json());

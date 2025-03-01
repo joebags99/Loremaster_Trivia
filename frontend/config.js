@@ -362,6 +362,29 @@ function saveSettings() {
         intervalTime: intervalTime
     });
     
+    // Also try direct server endpoint
+    fetch('/twitch/message', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            channelId: window.broadcasterId || "70361469",
+            message: {
+                type: 'UPDATE_SETTINGS',
+                answerTime: answerTime,
+                intervalTime: intervalTime
+            }
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("⚙️ Server endpoint response for settings:", data);
+    })
+    .catch(error => {
+        console.error("❌ Error with server settings endpoint:", error);
+    });
+    
     // Also call direct API endpoint
     fetch('/update-settings', {
         method: 'POST',
@@ -781,6 +804,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
 
         switch (data.type) {
             case "SETTINGS_UPDATE":
+            case "UPDATE_SETTINGS": // Add this case to handle both types
                 console.log("⚙️ Updating Settings:", data);
                 triviaSettings.answerTime = data.answerTime || triviaSettings.answerTime;
                 triviaSettings.intervalTime = data.intervalTime || triviaSettings.intervalTime;

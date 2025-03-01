@@ -1587,6 +1587,11 @@ app.post("/twitch/message", express.json(), async (req, res) => {
         const answerTime = message.answerTime;
         const intervalTime = message.intervalTime;
         
+        console.log(`⚙️ UPDATE_SETTINGS received:`, {
+          answerTime,
+          intervalTime
+        });
+        
         if (
           typeof answerTime !== "number" ||
           typeof intervalTime !== "number" ||
@@ -1601,9 +1606,16 @@ app.post("/twitch/message", express.json(), async (req, res) => {
         triviaSettings.answerTime = answerTime;
         triviaSettings.intervalTime = intervalTime;
         
-        // Broadcast settings update
+        // Broadcast settings update - use both terms for compatibility
         await broadcastToTwitch(channelId, {
-          type: "SETTINGS_UPDATE",
+          type: "SETTINGS_UPDATE", // Old term
+          answerTime: triviaSettings.answerTime,
+          intervalTime: triviaSettings.intervalTime,
+        });
+        
+        // Also broadcast with the new term
+        await broadcastToTwitch(channelId, {
+          type: "UPDATE_SETTINGS", // New term
           answerTime: triviaSettings.answerTime,
           intervalTime: triviaSettings.intervalTime,
         });

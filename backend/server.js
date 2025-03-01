@@ -9,6 +9,7 @@ const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const multer = require("multer");
 const fs = require("fs");
+const qs = require('querystring');
 const path = require("path");
 const { Console } = require("console");
 const twitchUsernames = {}; // Maps user IDs to usernames
@@ -100,25 +101,25 @@ app.options('/twitch/message', cors(corsOptions), (req, res) => {
   res.status(204).send();
 });
 
-// Function to get Twitch OAuth token
+const qs = require('querystring');
+
 async function getTwitchOAuthToken() {
-  try {
-      const response = await axios.post(
-          'https://id.twitch.tv/oauth2/token',
-          null,
-          {
-              params: {
-                  client_id: process.env.EXT_CLIENT_ID,
-                  client_secret: process.env.EXT_SECRET,
-                  grant_type: 'client_credentials'
-              }
-          }
-      );
-      return response.data.access_token;
-  } catch (error) {
-      console.error('❌ Error getting Twitch OAuth token:', error);
-      return null;
-  }
+    try {
+        const response = await axios.post(
+            'https://id.twitch.tv/oauth2/token',
+            qs.stringify({ // Twitch requires form-urlencoded body
+                client_id: process.env.EXT_CLIENT_ID,
+                client_secret: process.env.EXT_SECRET,
+                grant_type: 'client_credentials'
+            }),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+
+        return response.data.access_token;
+    } catch (error) {
+        console.error('❌ Error getting Twitch OAuth token:', error.response?.data || error.message);
+        return null;
+    }
 }
 
 // Get usernames for a list of user IDs

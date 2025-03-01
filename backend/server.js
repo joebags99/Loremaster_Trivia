@@ -14,22 +14,7 @@ const { Console } = require("console");
 const { Sequelize, DataTypes } = require("sequelize");
 const PORT = process.env.PORT || 5000; // default port
 
-// Initialize Express app - MOVED THIS UP to avoid reference error
-const app = express();
-
-// ADD THIS LINE to apply CORS to all routes
-app.use(cors(corsOptions));
-
-// Global state variables
-const usersScores = {}; // Stores scores { "twitchUserID": score }
-const userSessionScores = {}; // Stores session scores { "twitchUserID": score }
-let triviaActive = false; // ✅ Trivia is inactive until manually started
-let triviaRoundEndTime = 0; // Prevents countdown updates during an active trivia round
-let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
-let questionInProgress = false; // ✅ Prevents multiple questions at once
-let usedQuestions = []; // Avoiding Repeat Questions
-
-// Configure CORS for Twitch EBS
+// Configure CORS for Twitch EBS - MOVED UP to fix reference error
 const corsOptions = {
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, etc.)
@@ -73,7 +58,22 @@ const corsOptions = {
   maxAge: 86400 // 24 hours
 };
 
-// Handle OPTIONS requests for CORS preflight - NOW app is defined before using it
+// Initialize Express app
+const app = express();
+
+// Apply CORS to all routes
+app.use(cors(corsOptions));
+
+// Global state variables
+const usersScores = {}; // Stores scores { "twitchUserID": score }
+const userSessionScores = {}; // Stores session scores { "twitchUserID": score }
+let triviaActive = false; // ✅ Trivia is inactive until manually started
+let triviaRoundEndTime = 0; // Prevents countdown updates during an active trivia round
+let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
+let questionInProgress = false; // ✅ Prevents multiple questions at once
+let usedQuestions = []; // Avoiding Repeat Questions
+
+// Handle OPTIONS requests for CORS preflight
 app.options('*', cors(corsOptions));
 
 // Add specific options handler for the Twitch message endpoint

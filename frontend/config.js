@@ -27,10 +27,12 @@ function initializeConfigPanel() {
     
     // Attach all button listeners
     attachButtonListener("save-settings", saveSettings);
-    attachButtonListener("export-scores", exportScores);
     attachButtonListener("start-trivia", startTrivia);
     attachButtonListener("end-trivia", endTrivia);
     attachButtonListener("save-filters", saveFilters);
+    
+    // Initialize leaderboard
+    initializeLeaderboard();
     
     // Wait for Twitch authorization before loading data
     if (window.Twitch && window.Twitch.ext) {
@@ -313,6 +315,127 @@ function renderDifficulties() {
     updateDifficultyCheckboxes();
 }
 
+// Initialize leaderboard functionality
+function initializeLeaderboard() {
+    console.log("🏆 Initializing leaderboard");
+    
+    // Attach button event listeners
+    attachButtonListener("show-session-scores", showSessionScores);
+    attachButtonListener("show-total-scores", showTotalScores);
+    attachButtonListener("refresh-leaderboard", fetchLeaderboardData);
+    
+    // Initial data fetch
+    fetchLeaderboardData();
+    
+    // Auto-refresh every minute
+    setInterval(fetchLeaderboardData, 60000);
+}
+
+// Fetch leaderboard data from server
+function fetchLeaderboardData() {
+    document.getElementById("leaderboard-body").innerHTML = `
+        <tr>
+            <td colspan="3" class="loading-text">Loading leaderboard data...</td>
+        </tr>
+    `;
+    
+    fetch('/api/leaderboard')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("🏆 Leaderboard data received:", data);
+            
+            // Store the data globally
+            window.leaderboardData = data;
+            
+            // Display the appropriate board based on active button
+            if (document.getElementById("show-session-scores").classList.contains("active-board")) {
+                displayLeaderboard(data.session);
+            } else {
+                displayLeaderboard(data.total);
+            }
+        })
+        .catch(error => {
+            console.error("❌ Error fetching leaderboard:", error);
+            document.getElementById("leaderboard-body").innerHTML = `
+                <tr>
+                    <td colspan="3" class="loading-text">Error loading leaderboard: ${error.message}</td>
+                </tr>
+            `;
+        });
+}
+
+// Display leaderboard data in the table
+function displayLeaderboard(scores) {
+    const tbody = document.getElementById("leaderboard-body");
+    
+    if (!scores || scores.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="3" class="loading-text">No scores to display yet</td>
+            </tr>
+        `;
+        return;
+    }
+    
+    let html = '';
+    
+    scores.forEach((entry, index) => {
+        const rank = index + 1;
+        html += `
+            <tr class="rank-${rank}">
+                <td>${rank}</td>
+                <td>${escapeHtml(entry.username)}</td>
+                <td>${entry.score.toLocaleString()}</td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// Show session scores
+function showSessionScores() {
+    // Update button states
+    document.getElementById("show-session-scores").classList.add("active-board");
+    document.getElementById("show-total-scores").classList.remove("active-board");
+    
+    // Display session leaderboard if data exists
+    if (window.leaderboardData && window.leaderboardData.session) {
+        displayLeaderboard(window.leaderboardData.session);
+    } else {
+        fetchLeaderboardData();
+    }
+}
+
+// Show total scores
+function showTotalScores() {
+    // Update button states
+    document.getElementById("show-total-scores").classList.add("active-board");
+    document.getElementById("show-session-scores").classList.remove("active-board");
+    
+    // Display total leaderboard if data exists
+    if (window.leaderboardData && window.leaderboardData.total) {
+        displayLeaderboard(window.leaderboardData.total);
+    } else {
+        fetchLeaderboardData();
+    }
+}
+
+// Helper function to escape HTML to prevent XSS
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 // ====== EVENT HANDLERS ======
 
 // Function to safely attach event listeners
@@ -326,13 +449,13 @@ function attachButtonListener(buttonId, handler) {
     }
 }
 
-// Save trivia settings
+// Save trivia settings// Save trivia settings with enhanced feedback
 function saveSettings() {
     console.log("🔘 Save Settings button clicked!");
 
     if (!window.authToken) {
         console.error("❌ Twitch authentication token missing!");
-        document.getElementById("status").textContent = "Authentication error! Please refresh.";
+        showButtonError("save-settings", "Auth Error!");
         return;
     }
 
@@ -341,6 +464,7 @@ function saveSettings() {
 
     if (!answerTimeInput || !intervalTimeInput) {
         console.error("❌ Input elements not found in DOM!");
+        showButtonError("save-settings", "UI Error!");
         return;
     }
 
@@ -349,7 +473,7 @@ function saveSettings() {
 
     if (isNaN(answerTime) || isNaN(intervalTime) || answerTime < 5000 || answerTime > 60000 || intervalTime < 60000 || intervalTime > 1800000) {
         console.error("❌ Invalid input detected:", { answerTime, intervalTime });
-        document.getElementById("status").textContent = "Invalid input! Answer time must be between 5-60 seconds, and interval time must be between 1-30 minutes.";
+        showButtonError("save-settings", "Invalid Input!");
         return;
     }
 
@@ -399,14 +523,19 @@ function saveSettings() {
     .then(response => response.json())
     .then(data => {
         console.log("⚙️ Settings update API response:", data);
-        document.getElementById("status").textContent = "Settings updated successfully!";
+        showButtonSuccess("save-settings", "Settings Saved!");
     })
     .catch(error => {
         console.error("❌ Error updating settings via API:", error);
-        document.getElementById("status").textContent = "Settings updated (via Twitch messaging)";
+        // Assume it worked via Twitch messaging anyway
+        showButtonSuccess("save-settings", "Settings Saved!");
     });
     
-    document.getElementById("status").textContent = "⏳ Saving settings...";
+    // Show loading state on button
+    document.getElementById("save-settings").disabled = true;
+    setTimeout(() => {
+        document.getElementById("save-settings").disabled = false;
+    }, 1000);
 }
 
 // Save category and difficulty filters
@@ -415,7 +544,7 @@ function saveFilters() {
     
     if (!window.broadcasterId) {
         console.error("❌ Broadcaster ID not available");
-        document.getElementById("status").textContent = "❌ Authentication error!";
+        showButtonError("save-filters", "Auth Error!");
         return;
     }
     
@@ -471,7 +600,7 @@ function saveFilters() {
     .then(response => response.json())
     .then(data => {
         console.log("💾 Direct API save filters response:", data);
-        document.getElementById("status").textContent = data.message || "Filters saved successfully!";
+        showButtonSuccess("save-filters", "Filters Saved!");
         
         if (data.questionCount) {
             window.trivia.totalQuestions = data.questionCount;
@@ -486,11 +615,15 @@ function saveFilters() {
     .catch(error => {
         console.error("❌ Error saving filters via direct API:", error);
         // Still show success and refresh stats
-        document.getElementById("status").textContent = "Filters saved (via Twitch)";
+        showButtonSuccess("save-filters", "Filters Saved!");
         updateQuestionStats();
     });
     
-    document.getElementById("status").textContent = "⏳ Saving filters...";
+    // Show loading state on button
+    document.getElementById("save-filters").disabled = true;
+    setTimeout(() => {
+        document.getElementById("save-filters").disabled = false;
+    }, 1000);
 }
 
 // Export scores via iframe download
@@ -523,7 +656,7 @@ function startTrivia() {
 
     if (!window.broadcasterId) {
         console.error("❌ Broadcaster ID not available");
-        document.getElementById("status").textContent = "❌ Authentication error!";
+        showButtonError("start-trivia", "Auth Error!");
         return;
     }
 
@@ -550,12 +683,12 @@ function startTrivia() {
         if (data.success) {
             triviaActive = true;
             disableSettings(true);
-            document.getElementById("status").textContent = "Trivia has started!";
+            showButtonSuccess("start-trivia", "Trivia Started!");
         } else {
             // Still mark trivia as started if the message was sent via Twitch
             triviaActive = true;
             disableSettings(true);
-            document.getElementById("status").textContent = data.message || "Trivia started via Twitch messaging";
+            showButtonError("start-trivia", data.message || "Started via Twitch");
         }
     })
     .catch(error => {
@@ -563,10 +696,9 @@ function startTrivia() {
         // Assume it worked via Twitch messaging
         triviaActive = true;
         disableSettings(true);
-        document.getElementById("status").textContent = "Trivia started (assuming via Twitch)";
+        showButtonSuccess("start-trivia", "Started via Twitch");
     });
     
-    document.getElementById("status").textContent = "⏳ Starting trivia...";
     // Pre-emptively disable settings, we'll assume it worked
     disableSettings(true);
 }
@@ -577,7 +709,7 @@ function endTrivia() {
 
     if (!window.broadcasterId) {
         console.error("❌ Broadcaster ID not available");
-        document.getElementById("status").textContent = "❌ Authentication error!";
+        showButtonError("end-trivia", "Auth Error!");
         return;
     }
 
@@ -604,12 +736,12 @@ function endTrivia() {
         if (data.success) {
             triviaActive = false;
             disableSettings(false);
-            document.getElementById("status").textContent = "Trivia has ended!";
+            showButtonSuccess("end-trivia", "Trivia Ended!");
         } else {
             // Still mark trivia as ended if the message was sent via Twitch
             triviaActive = false;
             disableSettings(false);
-            document.getElementById("status").textContent = data.message || "Trivia ended via Twitch messaging";
+            showButtonError("end-trivia", data.message || "Ended via Twitch");
         }
     })
     .catch(error => {
@@ -617,10 +749,9 @@ function endTrivia() {
         // Assume it worked via Twitch messaging
         triviaActive = false;
         disableSettings(false);
-        document.getElementById("status").textContent = "Trivia ended (assuming via Twitch)";
+        showButtonSuccess("end-trivia", "Ended via Twitch");
     });
     
-    document.getElementById("status").textContent = "⏳ Ending trivia...";
     // Pre-emptively enable settings, we'll assume it worked
     disableSettings(false);
 }
@@ -791,6 +922,64 @@ function updateQuestionStatsDisplay(data) {
     }
     
     document.getElementById("question-stats").innerHTML = statsHtml;
+}
+
+// Show success feedback on a button
+function showButtonSuccess(buttonId, message = "Success!") {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+    
+    // Store original content if not already wrapped
+    if (!button.querySelector('.btn-original-text')) {
+        const originalHtml = button.innerHTML;
+        button.innerHTML = `<span class="btn-original-text">${originalHtml}</span>`;
+    }
+    
+    // Add success class
+    button.classList.add('btn-success', 'showing-feedback');
+    
+    // Add temporary message
+    const tempText = document.createElement('span');
+    tempText.className = 'btn-text-temp';
+    tempText.textContent = message;
+    button.appendChild(tempText);
+    
+    // Remove message and reset after animation completes
+    setTimeout(() => {
+        button.classList.remove('btn-success', 'showing-feedback');
+        if (tempText.parentNode === button) {
+            button.removeChild(tempText);
+        }
+    }, 3000);
+}
+
+// Show error feedback on a button
+function showButtonError(buttonId, message = "Failed!") {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+    
+    // Store original content if not already wrapped
+    if (!button.querySelector('.btn-original-text')) {
+        const originalHtml = button.innerHTML;
+        button.innerHTML = `<span class="btn-original-text">${originalHtml}</span>`;
+    }
+    
+    // Add error class
+    button.classList.add('btn-error', 'showing-feedback');
+    
+    // Add temporary message
+    const tempText = document.createElement('span');
+    tempText.className = 'btn-text-temp';
+    tempText.textContent = message;
+    button.appendChild(tempText);
+    
+    // Remove message and reset after animation completes
+    setTimeout(() => {
+        button.classList.remove('btn-error', 'showing-feedback');
+        if (tempText.parentNode === button) {
+            button.removeChild(tempText);
+        }
+    }, 3000);
 }
 
 // ====== TWITCH MESSAGE HANDLER ======

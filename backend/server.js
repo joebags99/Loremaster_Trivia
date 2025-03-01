@@ -11,6 +11,7 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const { Console } = require("console");
+const twitchUsernames = {}; // Maps user IDs to usernames
 const { Sequelize, DataTypes } = require("sequelize");
 const PORT = process.env.PORT || 5000; // default port
 
@@ -814,6 +815,11 @@ app.post("/submit-answer", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    if (req.body.username) {
+      twitchUsernames[userId] = req.body.username;
+      console.log(`👤 Stored username for ${userId}: ${req.body.username}`);
+    }
+
     // Calculate Score Based on Difficulty and Timing
     let basePoints = 0;
     
@@ -1478,6 +1484,56 @@ app.get("/api/sample-questions", async (req, res) => {
     console.error("❌ Error getting sample questions:", error);
     res.status(500).json({ error: "Failed to get sample questions" });
   }
+});
+
+// New endpoint to get leaderboard data
+app.get("/api/leaderboard", async (req, res) => {
+  try {
+    // Get top scores from database
+    const dbScores = await Score.findAll({
+      order: [['score', 'DESC']],
+      limit: 20
+    });
+    
+    // Convert to a more usable format with usernames
+    const totalLeaderboard = dbScores.map(entry => {
+      return {
+        userId: entry.userId,
+        username: twitchUsernames[entry.userId] || `User-${entry.userId.substring(0, 5)}...`,
+        score: entry.score
+      };
+    });
+    
+    // Sort session scores and get top 20
+    const sessionScores = Object.entries(userSessionScores)
+      .map(([userId, score]) => ({
+        userId,
+        username: twitchUsernames[userId] || `User-${userId.substring(0, 5)}...`,
+        score
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
+    
+    res.json({
+      total: totalLeaderboard,
+      session: sessionScores
+    });
+  } catch (error) {
+    console.error("❌ Error fetching leaderboard:", error);
+    res.status(500).json({ error: "Failed to fetch leaderboard" });
+  }
+});
+
+// Endpoint to manually add usernames (for testing)
+app.post("/api/add-username", express.json(), (req, res) => {
+  const { userId, username } = req.body;
+  
+  if (!userId || !username) {
+    return res.status(400).json({ error: "Missing userId or username" });
+  }
+  
+  twitchUsernames[userId] = username;
+  res.json({ success: true, message: `Username ${username} added for ${userId}` });
 });
 
 // ✅ Handle Twitch extension message handler

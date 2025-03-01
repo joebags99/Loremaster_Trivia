@@ -4,6 +4,7 @@ let questionStartTime = null;  // Timestamp when the current trivia question is 
 let triviaActive = false;      // Flag indicating an active trivia round
 let nextQuestionTime = null;   // Track next trivia question time
 let lastAnswerData = null;     // Removes the last answer difficulty tab
+let twitchUsername = null;
 let questionRequested = false; // Prevents multiple requests
 let triviaSettings = {
     answerTime: 30000,     // Default 30 seconds
@@ -18,9 +19,16 @@ window.Twitch.ext.onAuthorized((auth) => {
     userId = auth.userId;
     console.log("✅ User Authorized:", userId);
     
+    // Get Twitch username if available
+    if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.opaqueId) {
+        twitchUsername = window.Twitch.ext.viewer.displayName || `User-${auth.userId.substring(0, 5)}`;
+        console.log("👤 Viewer username:", twitchUsername);
+    }
+    
     // Fetch the user's score from the database
     fetchUserScore(userId);
 });
+
 
 // --- DOM Elements ---
 const waitingScreen = document.getElementById("waiting-screen");
@@ -383,6 +391,7 @@ function displayScores(totalScore, sessionScore) {
 
 
 // Update selectAnswer function to handle both scores and better error handling
+// Your existing selectAnswer function with username added:
 function selectAnswer(button, selectedChoice, correctAnswer) {
     if (!userId) {
         console.warn("⚠ User ID missing. Cannot track score.");
@@ -404,9 +413,10 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
     const answerTime = Date.now() - questionStartTime;
     console.log(`📩 User ${userId} answered in ${answerTime}ms (Difficulty: ${currentQuestionDifficulty})`);
 
-    // Prepare data for submission
+    // Prepare data for submission - now with username
     const answerData = {
         userId: userId,
+        username: twitchUsername, // Added username to the data sent
         selectedAnswer: selectedChoice,
         correctAnswer: correctAnswer,
         answerTime: answerTime,

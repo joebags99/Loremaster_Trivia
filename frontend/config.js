@@ -554,21 +554,23 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                 
                 document.getElementById("status").textContent = "Settings updated!";
                 break;
-
+        
             case "TRIVIA_START":
+            case "START_TRIVIA": // Added this case to handle both message types
                 console.log("🚀 Trivia has started!");
                 triviaActive = true;
                 disableSettings(true);
                 document.getElementById("status").textContent = "Trivia has started!";
                 break;
-
+        
             case "TRIVIA_END":
+            case "END_TRIVIA": // Added this case to handle both message types
                 console.log("⛔ Trivia has been ended.");
                 triviaActive = false;
                 disableSettings(false);
                 document.getElementById("status").textContent = "Trivia has ended!";
                 break;
-
+        
             case "CATEGORIES_RESPONSE":
                 console.log("📚 Categories received:", data.categories);
                 // Store categories in global state
@@ -577,7 +579,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                 // Render categories
                 renderCategories();
                 break;
-
+        
             case "DIFFICULTIES_RESPONSE":
                 console.log("🔄 Difficulties received:", data.difficulties);
                 // Store difficulties in global state
@@ -586,14 +588,14 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                 // Render difficulties
                 renderDifficulties();
                 break;
-
+        
             case "QUESTION_STATS_RESPONSE":
                 console.log("📊 Question stats received:", data);
                 // Update total questions and display stats
                 window.trivia.totalQuestions = data.totalMatching || 0;
                 updateQuestionStatsDisplay(data);
                 break;
-
+        
             case "FILTERS_SAVED":
                 console.log("💾 Filters saved:", data);
                 // Update UI or show a success message
@@ -607,7 +609,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                     });
                 }
                 break;
-
+        
             case "BROADCASTER_SETTINGS_RESPONSE":
                 console.log("⚙️ Broadcaster settings received:", data.settings);
                 
@@ -624,7 +626,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                     updateQuestionStats();
                 }
                 break;
-
+        
             default:
                 console.warn("⚠️ Unknown broadcast type:", data.type);
                 break;

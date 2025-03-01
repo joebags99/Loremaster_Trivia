@@ -41,14 +41,17 @@ function initializeConfigPanel() {
             window.authToken = auth.token;
             
             // Load initial data after auth
-            loadCategories();
-            loadDifficulties();
+            loadCategoriesDirectAPI();
+            loadDifficultiesDirectAPI();
             
             // Request broadcaster's saved settings
             window.Twitch.ext.send('broadcast', 'application/json', {
                 type: 'GET_BROADCASTER_SETTINGS',
                 broadcasterId: window.broadcasterId
             });
+            
+            // Also try direct API as backup
+            fetchBroadcasterSettings();
         });
     } else {
         console.error("❌ Twitch API not available");
@@ -128,37 +131,19 @@ function createMockTwitchForTesting() {
 
 // ====== DATA LOADING FUNCTIONS ======
 
-// Load categories from the server
-function loadCategories() {
-    console.log("🔍 Loading categories");
+// Load categories directly from API endpoint
+function loadCategoriesDirectAPI() {
+    console.log("🔍 Loading categories via direct API");
     
-    // First try the test endpoint to verify connectivity
-    fetch('/api/test')
+    fetch('/api/categories')
         .then(response => {
-            console.log(`Test API status: ${response.status}`);
-            return response.text(); // Use text() instead of json() for debugging
-        })
-        .then(text => {
-            console.log("Test API response:", text);
-            
-            // Now try the categories endpoint
-            return fetch('/api/categories');
-        })
-        .then(response => {
-            console.log(`Categories API status: ${response.status}`);
             if (!response.ok) {
-                return response.text().then(text => {
-                    console.error(`API error response: ${text}`);
-                    throw new Error(`HTTP error! status: ${response.status}, body: ${text}`);
-                });
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-            return response.text(); // Get the raw text first for debugging
+            return response.json();
         })
-        .then(text => {
-            console.log("Raw categories response:", text);
-            // Now parse as JSON
-            const data = JSON.parse(text);
-            console.log("Parsed categories data:", data);
+        .then(data => {
+            console.log("🔄 Categories received from direct API:", data);
             
             // Store categories in global state
             window.trivia.categories = data.categories || [];
@@ -167,7 +152,7 @@ function loadCategories() {
             renderCategories();
         })
         .catch(error => {
-            console.error("❌ Error loading categories:", error);
+            console.error("❌ Error loading categories via direct API:", error);
             
             // Fall back to Twitch messaging approach
             console.log("🔄 Trying Twitch messaging for categories");
@@ -177,11 +162,10 @@ function loadCategories() {
         });
 }
 
-// Load difficulties from the server
-function loadDifficulties() {
-    console.log("🔍 Loading difficulties");
+// Load difficulties directly from API endpoint
+function loadDifficultiesDirectAPI() {
+    console.log("🔍 Loading difficulties via direct API");
     
-    // First try the direct API approach
     fetch('/api/difficulties')
         .then(response => {
             if (!response.ok) {
@@ -190,7 +174,7 @@ function loadDifficulties() {
             return response.json();
         })
         .then(data => {
-            console.log("🔄 Difficulties received:", data);
+            console.log("🔄 Difficulties received from direct API:", data);
             
             // Store difficulties in global state
             window.trivia.difficulties = data.difficulties || [];
@@ -199,13 +183,49 @@ function loadDifficulties() {
             renderDifficulties();
         })
         .catch(error => {
-            console.error("❌ Error loading difficulties directly:", error);
+            console.error("❌ Error loading difficulties via direct API:", error);
             
             // Fall back to Twitch messaging approach
             console.log("🔄 Trying Twitch messaging for difficulties");
             window.Twitch.ext.send('broadcast', 'application/json', {
                 type: 'GET_DIFFICULTIES'
             });
+        });
+}
+
+// Fetch broadcaster settings directly from API
+function fetchBroadcasterSettings() {
+    if (!window.broadcasterId) {
+        console.error("❌ Broadcaster ID not available for settings fetch");
+        return;
+    }
+    
+    console.log(`🔍 Fetching broadcaster settings for ID: ${window.broadcasterId}`);
+    
+    fetch(`/api/settings/${window.broadcasterId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("🔄 Broadcaster settings received from direct API:", data);
+            
+            if (data.settings) {
+                window.trivia.selectedCategories = data.settings.active_categories || [];
+                window.trivia.selectedDifficulties = data.settings.active_difficulties || ["Easy", "Medium", "Hard"];
+                
+                // Update UI checkboxes
+                updateCategoryCheckboxes();
+                updateDifficultyCheckboxes();
+                
+                // Update question stats
+                updateQuestionStats();
+            }
+        })
+        .catch(error => {
+            console.error("❌ Error fetching broadcaster settings:", error);
         });
 }
 
@@ -335,10 +355,32 @@ function saveSettings() {
 
     console.log("📤 Sending settings update:", { answerTime, intervalTime });
 
+    // Send via Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'UPDATE_SETTINGS',
         answerTime: answerTime,
         intervalTime: intervalTime
+    });
+    
+    // Also call direct API endpoint
+    fetch('/update-settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            answerTime: answerTime,
+            intervalTime: intervalTime
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("⚙️ Settings update API response:", data);
+        document.getElementById("status").textContent = "Settings updated successfully!";
+    })
+    .catch(error => {
+        console.error("❌ Error updating settings via API:", error);
+        document.getElementById("status").textContent = "Settings updated (via Twitch messaging)";
     });
     
     document.getElementById("status").textContent = "⏳ Saving settings...";
@@ -354,11 +396,40 @@ function saveFilters() {
         return;
     }
     
+    // Send data via Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'SAVE_FILTERS',
         broadcasterId: window.broadcasterId,
         activeCategories: window.trivia.selectedCategories,
         activeDifficulties: window.trivia.selectedDifficulties
+    });
+    console.log("📤 Sent SAVE_FILTERS via Twitch messaging");
+    
+    // Also use direct API call as backup
+    fetch(`/api/settings/${window.broadcasterId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            activeCategories: window.trivia.selectedCategories,
+            activeDifficulties: window.trivia.selectedDifficulties
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("💾 Direct API save filters response:", data);
+        document.getElementById("status").textContent = data.message || "Filters saved successfully!";
+        
+        if (data.questionCount) {
+            window.trivia.totalQuestions = data.questionCount;
+            updateQuestionStatsDisplay({
+                totalMatching: data.questionCount
+            });
+        }
+    })
+    .catch(error => {
+        console.error("❌ Error saving filters via direct API:", error);
     });
     
     document.getElementById("status").textContent = "⏳ Saving filters...";
@@ -388,7 +459,7 @@ function exportScores() {
     document.getElementById("status").textContent = "📥 Downloading scores...";
 }
 
-// Start Trivia
+// Start Trivia - MODIFIED FOR DUAL APPROACH
 function startTrivia() {
     console.log("▶️ Start Trivia button clicked!");
 
@@ -398,16 +469,51 @@ function startTrivia() {
         return;
     }
 
+    // 1. Try Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'START_TRIVIA',
         broadcasterId: window.broadcasterId
     });
+    console.log("📤 Sent START_TRIVIA via Twitch messaging");
+    
+    // 2. Also try direct API call as backup
+    fetch('/start-trivia', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            broadcasterId: window.broadcasterId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("🚀 Direct API start trivia response:", data);
+        if (data.success) {
+            triviaActive = true;
+            disableSettings(true);
+            document.getElementById("status").textContent = "Trivia has started!";
+        } else {
+            // Still mark trivia as started if the message was sent via Twitch
+            triviaActive = true;
+            disableSettings(true);
+            document.getElementById("status").textContent = data.message || "Trivia started via Twitch messaging";
+        }
+    })
+    .catch(error => {
+        console.error("❌ Error starting trivia via direct API:", error);
+        // Assume it worked via Twitch messaging
+        triviaActive = true;
+        disableSettings(true);
+        document.getElementById("status").textContent = "Trivia started (assuming via Twitch)";
+    });
     
     document.getElementById("status").textContent = "⏳ Starting trivia...";
+    // Pre-emptively disable settings, we'll assume it worked
     disableSettings(true);
 }
 
-// End trivia immediately
+// End trivia immediately - MODIFIED FOR DUAL APPROACH
 function endTrivia() {
     console.log("⛔ End Trivia button clicked!");
 
@@ -417,12 +523,47 @@ function endTrivia() {
         return;
     }
 
+    // 1. Try Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'END_TRIVIA',
         broadcasterId: window.broadcasterId
     });
+    console.log("📤 Sent END_TRIVIA via Twitch messaging");
+    
+    // 2. Also try direct API call as backup
+    fetch('/end-trivia', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            broadcasterId: window.broadcasterId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("⛔ Direct API end trivia response:", data);
+        if (data.success) {
+            triviaActive = false;
+            disableSettings(false);
+            document.getElementById("status").textContent = "Trivia has ended!";
+        } else {
+            // Still mark trivia as ended if the message was sent via Twitch
+            triviaActive = false;
+            disableSettings(false);
+            document.getElementById("status").textContent = data.message || "Trivia ended via Twitch messaging";
+        }
+    })
+    .catch(error => {
+        console.error("❌ Error ending trivia via direct API:", error);
+        // Assume it worked via Twitch messaging
+        triviaActive = false;
+        disableSettings(false);
+        document.getElementById("status").textContent = "Trivia ended (assuming via Twitch)";
+    });
     
     document.getElementById("status").textContent = "⏳ Ending trivia...";
+    // Pre-emptively enable settings, we'll assume it worked
     disableSettings(false);
 }
 
@@ -484,16 +625,39 @@ function updateDifficultyCheckboxes() {
     });
 }
 
-// Update question stats based on selected filters
+// Update question stats based on selected filters - MODIFIED FOR DUAL APPROACH
 function updateQuestionStats() {
     const categoriesParam = window.trivia.selectedCategories.join(',');
     const difficultiesParam = window.trivia.selectedDifficulties.join(',');
     
-    // Use Twitch messaging
+    console.log("📊 Updating question stats with filters:", {
+        categories: window.trivia.selectedCategories,
+        difficulties: window.trivia.selectedDifficulties
+    });
+    
+    // 1. Try Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'GET_QUESTION_STATS',
         categories: window.trivia.selectedCategories,
         difficulties: window.trivia.selectedDifficulties
+    });
+    console.log("📤 Sent GET_QUESTION_STATS via Twitch messaging");
+    
+    // 2. Also try direct API call as backup
+    fetch(`/api/sample-questions?categories=${categoriesParam}&difficulties=${difficultiesParam}&limit=0`, {
+        method: 'GET'
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("📊 Direct API question stats response:", data);
+        window.trivia.totalQuestions = data.totalMatching || 0;
+        updateQuestionStatsDisplay({
+            totalMatching: data.totalMatching || 0,
+            filters: data.filters
+        });
+    })
+    .catch(error => {
+        console.error("❌ Error getting question stats via direct API:", error);
     });
     
     // Update UI while waiting for response
@@ -554,23 +718,23 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                 
                 document.getElementById("status").textContent = "Settings updated!";
                 break;
-        
+
             case "TRIVIA_START":
-            case "START_TRIVIA": // Added this case to handle both message types
+            case "START_TRIVIA": // Handle both message types
                 console.log("🚀 Trivia has started!");
                 triviaActive = true;
                 disableSettings(true);
                 document.getElementById("status").textContent = "Trivia has started!";
                 break;
-        
+
             case "TRIVIA_END":
-            case "END_TRIVIA": // Added this case to handle both message types
+            case "END_TRIVIA": // Handle both message types
                 console.log("⛔ Trivia has been ended.");
                 triviaActive = false;
                 disableSettings(false);
                 document.getElementById("status").textContent = "Trivia has ended!";
                 break;
-        
+
             case "CATEGORIES_RESPONSE":
                 console.log("📚 Categories received:", data.categories);
                 // Store categories in global state
@@ -579,7 +743,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                 // Render categories
                 renderCategories();
                 break;
-        
+
             case "DIFFICULTIES_RESPONSE":
                 console.log("🔄 Difficulties received:", data.difficulties);
                 // Store difficulties in global state
@@ -588,14 +752,14 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                 // Render difficulties
                 renderDifficulties();
                 break;
-        
+
             case "QUESTION_STATS_RESPONSE":
                 console.log("📊 Question stats received:", data);
                 // Update total questions and display stats
                 window.trivia.totalQuestions = data.totalMatching || 0;
                 updateQuestionStatsDisplay(data);
                 break;
-        
+
             case "FILTERS_SAVED":
                 console.log("💾 Filters saved:", data);
                 // Update UI or show a success message
@@ -609,7 +773,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                     });
                 }
                 break;
-        
+
             case "BROADCASTER_SETTINGS_RESPONSE":
                 console.log("⚙️ Broadcaster settings received:", data.settings);
                 
@@ -626,7 +790,7 @@ window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
                     updateQuestionStats();
                 }
                 break;
-        
+
             default:
                 console.warn("⚠️ Unknown broadcast type:", data.type);
                 break;

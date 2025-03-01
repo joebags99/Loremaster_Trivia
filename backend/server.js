@@ -61,6 +61,23 @@ const corsOptions = {
 // Initialize Express app
 const app = express();
 
+// Add proper body parser middleware - THIS IS CRUCIAL
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Also helpful to log incoming requests for debugging
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/submit-answer') {
+    console.log(`📩 Received answer submission with content-type: ${req.headers['content-type']}`);
+    
+    // Check if body exists
+    if (!req.body || Object.keys(req.body).length === 0) {
+      console.warn('⚠️ Empty request body received on submit-answer');
+    }
+  }
+  next();
+});
+
 // Apply CORS to all routes
 app.use(cors(corsOptions));
 
@@ -767,23 +784,41 @@ app.post("/upload-csv", upload.single("file"), (req, res) => {
   }
 });
 
-// ✅ Handle User Answer Submission with Improved Scoring System
-// Modify the submit-answer endpoint to track both scores
+// ✅ Handle User Answer Submission with Improved Scoring System and Error Handling
 app.post("/submit-answer", async (req, res) => {
+  console.log("📤 Received answer submission:", req.body);
+  
   try {
-    const { userId, selectedAnswer, correctAnswer, answerTime, difficulty, duration } = req.body;
+    // Handle empty or undefined body
+    if (!req.body || Object.keys(req.body).length === 0) {
+      console.error("❌ Empty request body on submit-answer endpoint");
+      return res.status(400).json({ error: "Empty request body" });
+    }
+    
+    // Safely extract values with defaults
+    const userId = req.body.userId;
+    const selectedAnswer = req.body.selectedAnswer;
+    const correctAnswer = req.body.correctAnswer;
+    const answerTime = req.body.answerTime;
+    const difficulty = req.body.difficulty || 'Medium';
+    const duration = req.body.duration || triviaSettings.answerTime || 30000;
 
+    // Validate required fields
     if (!userId || !selectedAnswer || !correctAnswer || answerTime === undefined) {
+      console.error("❌ Missing required fields:", { 
+        userId: !!userId, 
+        selectedAnswer: !!selectedAnswer, 
+        correctAnswer: !!correctAnswer, 
+        answerTime: answerTime !== undefined 
+      });
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     // Calculate Score Based on Difficulty and Timing
     let basePoints = 0;
-    const questionDifficulty = difficulty || 'Medium';  // Default to Medium if not specified
-    const questionDuration = duration || triviaSettings.answerTime || 30000; // Use provided duration or default
     
     // Set base points based on difficulty
-    switch(questionDifficulty) {
+    switch(difficulty) {
       case 'Easy':
         basePoints = 500;
         break;
@@ -800,7 +835,7 @@ app.post("/submit-answer", async (req, res) => {
     
     if (selectedAnswer === correctAnswer) {
       // Calculate percentage of time elapsed (0 to 1)
-      const timePercentage = Math.min(1, answerTime / questionDuration);
+      const timePercentage = Math.min(1, answerTime / duration);
       
       // Calculate points reduction (1% per 1% of time)
       const pointsPercentage = Math.max(0.1, 1 - timePercentage); // Minimum 10%
@@ -808,7 +843,7 @@ app.post("/submit-answer", async (req, res) => {
       // Final points - round to nearest integer
       points = Math.round(basePoints * pointsPercentage);
 
-      console.log(`🎯 Scoring: Difficulty=${questionDifficulty}, Base=${basePoints}, Time=${answerTime}/${questionDuration}, Percentage=${Math.round(pointsPercentage * 100)}%, Final=${points}`);
+      console.log(`🎯 Scoring: Difficulty=${difficulty}, Base=${basePoints}, Time=${answerTime}/${duration}, Percentage=${Math.round(pointsPercentage * 100)}%, Final=${points}`);
     } else {
       console.log(`❌ Incorrect answer: ${selectedAnswer} (correct: ${correctAnswer})`);
     }
@@ -860,8 +895,8 @@ app.post("/submit-answer", async (req, res) => {
       totalScore: totalScore,
       sessionScore: sessionScore,
       basePoints,
-      difficulty: questionDifficulty,
-      timePercentage: Math.round((1 - Math.min(1, answerTime / questionDuration)) * 100)
+      difficulty: difficulty,
+      timePercentage: Math.round((1 - Math.min(1, answerTime / duration)) * 100)
     });
   } catch (error) {
     console.error("❌ Error submitting answer:", error);

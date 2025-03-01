@@ -382,7 +382,7 @@ function displayScores(totalScore, sessionScore) {
 }
 
 
-// Update selectAnswer function to handle both scores
+// Update selectAnswer function to handle both scores and better error handling
 function selectAnswer(button, selectedChoice, correctAnswer) {
     if (!userId) {
         console.warn("⚠ User ID missing. Cannot track score.");
@@ -404,20 +404,33 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
     const answerTime = Date.now() - questionStartTime;
     console.log(`📩 User ${userId} answered in ${answerTime}ms (Difficulty: ${currentQuestionDifficulty})`);
 
+    // Prepare data for submission
+    const answerData = {
+        userId: userId,
+        selectedAnswer: selectedChoice,
+        correctAnswer: correctAnswer,
+        answerTime: answerTime,
+        difficulty: currentQuestionDifficulty,
+        duration: currentQuestionDuration
+    };
+    
+    // Log the data being sent
+    console.log("📤 Submitting answer data:", answerData);
+
     // Submit answer to server
     fetch("/submit-answer", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            userId,
-            selectedAnswer: selectedChoice,
-            correctAnswer,
-            answerTime,
-            difficulty: currentQuestionDifficulty,
-            duration: currentQuestionDuration
-        }),
+        headers: { 
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(answerData),
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Server returned status ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         console.log("🏆 Score updated!", data);
         // Update both scores
@@ -430,9 +443,29 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
                 pointsEarned: data.pointsEarned,
                 timePercentage: data.timePercentage
             };
+            
+            // Optionally show points immediately if answer is correct
+            if (selectedChoice === correctAnswer) {
+                const pointsInfo = document.createElement("div");
+                pointsInfo.className = "points-info";
+                pointsInfo.innerHTML = `
+                    <span class="points">+${data.pointsEarned} points!</span>
+                    <span class="time-bonus">${data.timePercentage}% time bonus</span>
+                `;
+                button.parentNode.appendChild(pointsInfo);
+            }
         }
     })
-    .catch(error => console.error("❌ Error submitting answer:", error));
+    .catch(error => {
+        console.error("❌ Error submitting answer:", error);
+        
+        // Still update UI to indicate selection
+        if (selectedChoice === correctAnswer) {
+            button.classList.add("correct");
+        } else {
+            button.classList.add("wrong");
+        }
+    });
 }
 
 // Initialize UI in waiting state

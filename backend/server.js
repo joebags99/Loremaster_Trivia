@@ -17,6 +17,9 @@ const PORT = process.env.PORT || 5000; // default port
 // Initialize Express app - MOVED THIS UP to avoid reference error
 const app = express();
 
+// ADD THIS LINE to apply CORS to all routes
+app.use(cors(corsOptions));
+
 // Global state variables
 const usersScores = {}; // Stores scores { "twitchUserID": score }
 const userSessionScores = {}; // Stores session scores { "twitchUserID": score }
@@ -390,28 +393,20 @@ async function getRandomQuestionFromDB(categories = [], difficulties = []) {
   }
 }
 
-// REMOVED: Initialize Express app - Already initialized at the top of the file
-// app.use(express.static(path.join(__dirname, "frontend"))); // Serve frontend via Express
-// app.use(cors());
-// app.use(express.json());
-
-// Use Express middleware
-app.use(express.static(path.join(__dirname, "frontend"))); // Serve frontend via Express
-app.use(cors());
-app.use(express.json());
-
 // Add security headers
 app.use((req, res, next) => {
   // Log all API requests for debugging
   if (req.path.startsWith('/api/')) {
-    console.log(`📝 API Request: ${req.method} ${req.path}`);
-}
+    // Add request ID for tracing through logs
+    req.requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    console.log(`📝 API Request: ${req.method} ${req.path} (${req.requestId})`);
+  }
 
-// Check if this might be a categories request with wrong path
-if (req.path === '/categories' || req.path === '/difficulties') {
+  // Check if this might be a categories request with wrong path
+  if (req.path === '/categories' || req.path === '/difficulties') {
     console.log(`🔄 Redirecting ${req.path} to /api${req.path}`);
     return res.redirect(`/api${req.path}`);
-}
+  }
   // Prevent browsers from incorrectly detecting non-scripts as scripts
   res.setHeader('X-Content-Type-Options', 'nosniff');
   
@@ -441,6 +436,24 @@ app.use(express.static(frontendPath));
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "viewer.html"));
   console.log("✅ Serving viewer.html from:", frontendPath);
+});
+
+// ✅ Define routes for the configuration view
+app.get("/config", (req, res) => {
+  res.sendFile(path.join(frontendPath, "config.html"));
+  console.log("✅ Serving config.html from:", frontendPath);
+});
+
+// ✅ Define routes for the mobile view (fix the typo in filename)
+app.get("/mobile", (req, res) => {
+  res.sendFile(path.join(frontendPath, "mobile.html"));  // Not "moblile.html"
+  console.log("✅ Serving mobile.html from:", frontendPath);
+});
+
+// ✅ Define routes for the overlay view
+app.get("/overlay", (req, res) => {
+  res.sendFile(path.join(frontendPath, "overlay.html"));
+  console.log("✅ Serving overlay.html from:", frontendPath);
 });
 
 // ✅ Load Environment Variables
@@ -1247,12 +1260,26 @@ app.get("/get-next-question", async (req, res) => {
 
 // Get all available categories
 app.get("/api/categories", async (req, res) => {
+  // Set explicit CORS headers to make sure they're properly applied
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
   try {
+    console.log(`🔍 Getting categories from database...`);
+    
     // Get unique categories from the questions table
     const categories = await sequelize.query(
       "SELECT DISTINCT category_id FROM trivia_questions ORDER BY category_id",
       { type: sequelize.QueryTypes.SELECT }
     );
+    
+    if (!categories || categories.length === 0) {
+      console.log("⚠️ No categories found in database");
+      return res.json({ categories: [] });
+    }
+    
+    console.log(`✅ Found ${categories.length} categories`);
     
     // Count questions in each category
     const categoriesWithCounts = await Promise.all(categories.map(async (category) => {
@@ -1267,11 +1294,23 @@ app.get("/api/categories", async (req, res) => {
       };
     }));
     
+    console.log(`✅ Returning ${categoriesWithCounts.length} categories with counts`);
     res.json({ categories: categoriesWithCounts });
   } catch (error) {
     console.error("❌ Error getting categories:", error);
-    res.status(500).json({ error: "Failed to get categories" });
+    res.status(500).json({ error: "Failed to get categories", message: error.message });
   }
+});
+
+// Simple test endpoint for debugging
+app.get("/api/test", (req, res) => {
+  // Set explicit CORS headers
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  console.log("✅ Test endpoint called successfully");
+  res.json({ success: true, message: "API is working correctly" });
 });
 
 // Get all available difficulties

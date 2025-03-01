@@ -105,7 +105,7 @@ async function getTwitchOAuthToken() {
     try {
         const response = await axios.post(
             'https://id.twitch.tv/oauth2/token',
-            qs.stringify({ // Twitch requires form-urlencoded body
+            qs.stringify({
                 client_id: process.env.EXT_CLIENT_ID,
                 client_secret: process.env.EXT_SECRET,
                 grant_type: 'client_credentials'
@@ -113,12 +113,14 @@ async function getTwitchOAuthToken() {
             { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
         );
 
+        console.log("✅ Twitch OAuth Token received:", response.data.access_token);
         return response.data.access_token;
     } catch (error) {
-        console.error('❌ Error getting Twitch OAuth token:', error.response?.data || error.message);
+        console.error("❌ Error getting Twitch OAuth token:", error.response?.data || error.message);
         return null;
     }
 }
+
 
 // Get usernames for a list of user IDs
 async function getUsernames(userIds) {
@@ -555,12 +557,6 @@ const EXT_SECRET = process.env.EXT_SECRET;
 
 if (!EXT_CLIENT_ID || !EXT_OWNER_ID || !EXT_SECRET) {
   console.error("❌ ERROR: Missing required environment variables!");
-  process.exit(1);
-}
-
-const extSecretRaw = Buffer.from(EXT_SECRET, "base64");
-if (extSecretRaw.length !== 32) {
-  console.error("❌ ERROR: EXT_SECRET is not 32 bytes after decoding.");
   process.exit(1);
 }
 

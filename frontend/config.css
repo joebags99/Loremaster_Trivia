@@ -319,6 +319,48 @@ button.active-board {
 
 /* Add these styles to your config.css file */
 
+/* 🔘 Buttons - with better centering */
+button {
+    background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
+    border: 2px solid #c4a484;
+    color: white;
+    font-size: 1rem;
+    font-family: 'Merriweather', serif;
+    padding: 10px 15px;
+    margin-top: 10px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0px 0px 8px rgba(255, 204, 0, 0.7);
+    width: 95%;
+    display: block;
+    margin: 10px auto;
+    position: relative;
+    min-height: 44px;
+    text-align: center;
+}
+
+button:hover {
+    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
+    box-shadow: 0px 0px 15px rgba(255, 204, 0, 1);
+    transform: scale(1.05);
+}
+
+/* Button feedback styling */
+button.btn-success {
+    background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%);
+    border-color: #1e7e34;
+    box-shadow: 0px 0px 15px rgba(34, 255, 34, 0.4);
+    animation: fadeSuccess 3s forwards;
+}
+
+button.btn-error {
+    background: linear-gradient(180deg, #8b0000 0%, #400000 100%);
+    border-color: #b30000;
+    box-shadow: 0px 0px 15px rgba(255, 34, 34, 0.4);
+    animation: fadeError 3s forwards;
+}
+
 /* Button state animations */
 @keyframes fadeSuccess {
     0% { background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%); border-color: #1e7e34; }
@@ -332,19 +374,16 @@ button.active-board {
     100% { background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%); border-color: #c4a484; }
 }
 
-/* Button states */
-button.btn-success {
-    background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%);
-    border-color: #1e7e34;
-    box-shadow: 0px 0px 15px rgba(34, 255, 34, 0.4);
-    animation: fadeSuccess 3s forwards;
+/* Original and temporary text */
+.btn-original-text {
+    display: inline-block;
+    transition: opacity 0.3s ease;
+    width: 100%;
+    text-align: center;
 }
 
-button.btn-error {
-    background: linear-gradient(180deg, #8b0000 0%, #400000 100%);
-    border-color: #b30000;
-    box-shadow: 0px 0px 15px rgba(255, 34, 34, 0.4);
-    animation: fadeError 3s forwards;
+button.showing-feedback .btn-original-text {
+    opacity: 0;
 }
 
 /* Fade-in animation for button text */
@@ -364,30 +403,8 @@ button.btn-error {
     animation: fadeInOut 3s forwards;
     pointer-events: none;
     text-align: center;
-    width: 90%;
-}
-
-/* Make sure buttons have a consistent height when text changes */
-button {
-    position: relative;
-    min-height: 44px;
-    overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-/* Save the original text */
-button .btn-original-text {
-    transition: opacity 0.3s ease;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-}
-
-button.showing-feedback .btn-original-text {
-    opacity: 0;
+    width: auto;
+    max-width: 90%;
 }
 
 /* 🔄 Responsive Fixes */

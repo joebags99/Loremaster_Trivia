@@ -929,27 +929,20 @@ function showButtonSuccess(buttonId, message = "Success!") {
     const button = document.getElementById(buttonId);
     if (!button) return;
     
-    // Store original content if not already wrapped
-    if (!button.querySelector('.btn-original-text')) {
-        const originalHtml = button.innerHTML;
-        button.innerHTML = `<span class="btn-original-text">${originalHtml}</span>`;
-    }
+    // Store the original text
+    const originalHtml = button.innerHTML;
+    const originalText = button.textContent || button.innerText;
     
     // Add success class
-    button.classList.add('btn-success', 'showing-feedback');
+    button.classList.add('btn-success');
     
-    // Add temporary message
-    const tempText = document.createElement('span');
-    tempText.className = 'btn-text-temp';
-    tempText.textContent = message;
-    button.appendChild(tempText);
+    // Replace content with wrapped original + temp message
+    button.innerHTML = `<span class="btn-original-text">${originalHtml}</span><span class="btn-text-temp">${message}</span>`;
     
-    // Remove message and reset after animation completes
+    // Remove feedback after animation completes
     setTimeout(() => {
-        button.classList.remove('btn-success', 'showing-feedback');
-        if (tempText.parentNode === button) {
-            button.removeChild(tempText);
-        }
+        button.classList.remove('btn-success');
+        button.innerHTML = originalHtml;
     }, 3000);
 }
 
@@ -958,30 +951,22 @@ function showButtonError(buttonId, message = "Failed!") {
     const button = document.getElementById(buttonId);
     if (!button) return;
     
-    // Store original content if not already wrapped
-    if (!button.querySelector('.btn-original-text')) {
-        const originalHtml = button.innerHTML;
-        button.innerHTML = `<span class="btn-original-text">${originalHtml}</span>`;
-    }
+    // Store the original text
+    const originalHtml = button.innerHTML;
+    const originalText = button.textContent || button.innerText;
     
     // Add error class
-    button.classList.add('btn-error', 'showing-feedback');
+    button.classList.add('btn-error');
     
-    // Add temporary message
-    const tempText = document.createElement('span');
-    tempText.className = 'btn-text-temp';
-    tempText.textContent = message;
-    button.appendChild(tempText);
+    // Replace content with wrapped original + temp message
+    button.innerHTML = `<span class="btn-original-text">${originalHtml}</span><span class="btn-text-temp">${message}</span>`;
     
-    // Remove message and reset after animation completes
+    // Remove feedback after animation completes
     setTimeout(() => {
-        button.classList.remove('btn-error', 'showing-feedback');
-        if (tempText.parentNode === button) {
-            button.removeChild(tempText);
-        }
+        button.classList.remove('btn-error');
+        button.innerHTML = originalHtml;
     }, 3000);
 }
-
 // ====== TWITCH MESSAGE HANDLER ======
 
 // Add a listener for responses from the backend

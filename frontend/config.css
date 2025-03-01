@@ -345,6 +345,8 @@ button:hover {
     transform: scale(1.05);
 }
 
+/* Replace the button animation CSS with this corrected version */
+
 /* Button feedback styling */
 button.btn-success {
     background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%);
@@ -373,20 +375,20 @@ button.btn-error {
     100% { background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%); border-color: #c4a484; }
 }
 
-/* Original and temporary text */
+/* Original text container */
 .btn-original-text {
-    transition: opacity 0.3s ease;
     opacity: 1;
-    position: relative;
-    z-index: 1;
+    transition: opacity 0.3s ease;
+    display: inline-block;
 }
 
-button.showing-feedback .btn-original-text,
-button.showing-feedback button.btn-success .btn-original-text,
-button.showing-feedback button.btn-error .btn-original-text {
+/* When showing feedback, hide original text properly */
+button.btn-success .btn-original-text,
+button.btn-error .btn-original-text {
     opacity: 0;
 }
 
+/* Temporary message styling */
 .btn-text-temp {
     position: absolute;
     top: 50%;
@@ -394,16 +396,15 @@ button.showing-feedback button.btn-error .btn-original-text {
     transform: translate(-50%, -50%);
     width: 90%;
     text-align: center;
-    z-index: 2;
     animation: fadeInOut 3s forwards;
 }
 
-/* Fade-in animation for button text */
+/* Animation for temporary text */
 @keyframes fadeInOut {
-    0% { opacity: 0; transform: translateY(5px); }
-    10% { opacity: 1; transform: translateY(0); }
-    80% { opacity: 1; transform: translateY(0); }
-    100% { opacity: 0; transform: translateY(-5px); }
+    0% { opacity: 0; transform: translate(-50%, -60%); }
+    15% { opacity: 1; transform: translate(-50%, -50%); }
+    85% { opacity: 1; transform: translate(-50%, -50%); }
+    100% { opacity: 0; transform: translate(-50%, -40%); }
 }
 
 /* 🔄 Responsive Fixes */

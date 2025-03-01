@@ -317,8 +317,6 @@ button.active-board {
     padding: 20px !important;
 }
 
-/* Add these styles to your config.css file */
-
 /* 🔘 Buttons - with better centering */
 button {
     background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
@@ -336,6 +334,7 @@ button {
     display: block;
     margin: 10px auto;
     position: relative;
+    overflow: hidden; /* Keep animations contained */
     min-height: 44px;
     text-align: center;
 }
@@ -376,14 +375,27 @@ button.btn-error {
 
 /* Original and temporary text */
 .btn-original-text {
-    display: inline-block;
     transition: opacity 0.3s ease;
-    width: 100%;
-    text-align: center;
+    opacity: 1;
+    position: relative;
+    z-index: 1;
 }
 
-button.showing-feedback .btn-original-text {
+button.showing-feedback .btn-original-text,
+button.showing-feedback button.btn-success .btn-original-text,
+button.showing-feedback button.btn-error .btn-original-text {
     opacity: 0;
+}
+
+.btn-text-temp {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    text-align: center;
+    z-index: 2;
+    animation: fadeInOut 3s forwards;
 }
 
 /* Fade-in animation for button text */
@@ -392,19 +404,6 @@ button.showing-feedback .btn-original-text {
     10% { opacity: 1; transform: translateY(0); }
     80% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-5px); }
-}
-
-.btn-text-temp {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    white-space: nowrap;
-    animation: fadeInOut 3s forwards;
-    pointer-events: none;
-    text-align: center;
-    width: auto;
-    max-width: 90%;
 }
 
 /* 🔄 Responsive Fixes */

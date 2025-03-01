@@ -931,13 +931,15 @@ function showButtonSuccess(buttonId, message = "Success!") {
     
     // Store the original text
     const originalHtml = button.innerHTML;
-    const originalText = button.textContent || button.innerText;
     
     // Add success class
     button.classList.add('btn-success');
     
     // Replace content with wrapped original + temp message
-    button.innerHTML = `<span class="btn-original-text">${originalHtml}</span><span class="btn-text-temp">${message}</span>`;
+    button.innerHTML = `
+        <span class="btn-original-text">${originalHtml}</span>
+        <span class="btn-text-temp">${message}</span>
+    `;
     
     // Remove feedback after animation completes
     setTimeout(() => {
@@ -953,13 +955,15 @@ function showButtonError(buttonId, message = "Failed!") {
     
     // Store the original text
     const originalHtml = button.innerHTML;
-    const originalText = button.textContent || button.innerText;
     
     // Add error class
     button.classList.add('btn-error');
     
     // Replace content with wrapped original + temp message
-    button.innerHTML = `<span class="btn-original-text">${originalHtml}</span><span class="btn-text-temp">${message}</span>`;
+    button.innerHTML = `
+        <span class="btn-original-text">${originalHtml}</span>
+        <span class="btn-text-temp">${message}</span>
+    `;
     
     // Remove feedback after animation completes
     setTimeout(() => {
@@ -967,6 +971,7 @@ function showButtonError(buttonId, message = "Failed!") {
         button.innerHTML = originalHtml;
     }, 3000);
 }
+
 // ====== TWITCH MESSAGE HANDLER ======
 
 // Add a listener for responses from the backend

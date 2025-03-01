@@ -1514,35 +1514,47 @@ app.post("/twitch/message", express.json(), async (req, res) => {
         });
         break;
         
-      case "GET_QUESTION_STATS":
-        // Get question stats based on selected filters
-        const categoryFilter = message.categories || [];
-        const difficultyFilter = message.difficulties || [];
-        
-        // Build where clause
-        const whereClause = {};
-        if (categoryFilter.length > 0) {
-          whereClause.category_id = categoryFilter;
-        }
-        if (difficultyFilter.length > 0) {
-          whereClause.difficulty = difficultyFilter;
-        }
-        
-        // Count matching questions
-        const count = await TriviaQuestion.count({
-          where: whereClause
-        });
-        
-        // Broadcast stats back to the extension
-        await broadcastToTwitch(channelId, {
-          type: "QUESTION_STATS_RESPONSE",
-          totalMatching: count,
-          filters: {
+        case "GET_QUESTION_STATS":
+          // Get question stats based on selected filters
+          const categoryFilter = message.categories || [];
+          const difficultyFilter = message.difficulties || [];
+          
+          console.log(`📊 GET_QUESTION_STATS received with filters:`, {
             categories: categoryFilter,
             difficulties: difficultyFilter
+          });
+          
+          // Build where clause
+          const whereClause = {};
+          if (categoryFilter.length > 0) {
+            whereClause.category_id = categoryFilter;
           }
-        });
-        break;
+          if (difficultyFilter.length > 0) {
+            whereClause.difficulty = difficultyFilter;
+          }
+          
+          // Count matching questions
+          let count = 0;
+          try {
+            count = await TriviaQuestion.count({
+              where: whereClause
+            });
+            console.log(`📊 Found ${count} questions matching filters`);
+          } catch (countError) {
+            console.error("❌ Error counting questions:", countError);
+            count = 0;
+          }
+          
+          // Broadcast stats back to the extension
+          await broadcastToTwitch(channelId, {
+            type: "QUESTION_STATS_RESPONSE",
+            totalMatching: count,
+            filters: {
+              categories: categoryFilter,
+              difficulties: difficultyFilter
+            }
+          });
+          break;
         
       case "SAVE_FILTERS":
         // Save broadcaster filters

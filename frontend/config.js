@@ -396,6 +396,11 @@ function saveFilters() {
         return;
     }
     
+    console.log("📊 Current filter state:", {
+        categories: window.trivia.selectedCategories,
+        difficulties: window.trivia.selectedDifficulties
+    });
+    
     // Send data via Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'SAVE_FILTERS',
@@ -404,6 +409,30 @@ function saveFilters() {
         activeDifficulties: window.trivia.selectedDifficulties
     });
     console.log("📤 Sent SAVE_FILTERS via Twitch messaging");
+    
+    // Also try direct server endpoint (not API)
+    fetch('/twitch/message', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            channelId: window.broadcasterId,
+            message: {
+                type: 'SAVE_FILTERS',
+                broadcasterId: window.broadcasterId,
+                activeCategories: window.trivia.selectedCategories,
+                activeDifficulties: window.trivia.selectedDifficulties
+            }
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("💾 Server endpoint response:", data);
+    })
+    .catch(error => {
+        console.error("❌ Error with server endpoint:", error);
+    });
     
     // Also use direct API call as backup
     fetch(`/api/settings/${window.broadcasterId}`, {
@@ -426,10 +455,16 @@ function saveFilters() {
             updateQuestionStatsDisplay({
                 totalMatching: data.questionCount
             });
+        } else {
+            // Refresh question stats if count not provided
+            updateQuestionStats();
         }
     })
     .catch(error => {
         console.error("❌ Error saving filters via direct API:", error);
+        // Still show success and refresh stats
+        document.getElementById("status").textContent = "Filters saved (via Twitch)";
+        updateQuestionStats();
     });
     
     document.getElementById("status").textContent = "⏳ Saving filters...";
@@ -595,18 +630,16 @@ function disableSettings(isDisabled) {
 
 // Update selected categories based on checkboxes
 function updateSelectedCategories() {
-    window.trivia.selectedCategories = Array.from(
-        document.querySelectorAll('input[name="category"]:checked')
-    ).map(checkbox => checkbox.value);
+    const checkboxes = document.querySelectorAll('input[name="category"]:checked');
+    window.trivia.selectedCategories = Array.from(checkboxes).map(checkbox => checkbox.value);
     
     console.log("Selected categories:", window.trivia.selectedCategories);
 }
 
 // Update selected difficulties based on checkboxes
 function updateSelectedDifficulties() {
-    window.trivia.selectedDifficulties = Array.from(
-        document.querySelectorAll('input[name="difficulty"]:checked')
-    ).map(checkbox => checkbox.value);
+    const checkboxes = document.querySelectorAll('input[name="difficulty"]:checked');
+    window.trivia.selectedDifficulties = Array.from(checkboxes).map(checkbox => checkbox.value);
     
     console.log("Selected difficulties:", window.trivia.selectedDifficulties);
 }
@@ -627,38 +660,86 @@ function updateDifficultyCheckboxes() {
 
 // Update question stats based on selected filters - MODIFIED FOR DUAL APPROACH
 function updateQuestionStats() {
-    const categoriesParam = window.trivia.selectedCategories.join(',');
-    const difficultiesParam = window.trivia.selectedDifficulties.join(',');
+    // Ensure we have arrays
+    const categories = Array.isArray(window.trivia.selectedCategories) ? window.trivia.selectedCategories : [];
+    const difficulties = Array.isArray(window.trivia.selectedDifficulties) ? window.trivia.selectedDifficulties : [];
+    
+    // Format for URL parameters
+    const categoriesParam = categories.join(',');
+    const difficultiesParam = difficulties.join(',');
     
     console.log("📊 Updating question stats with filters:", {
-        categories: window.trivia.selectedCategories,
-        difficulties: window.trivia.selectedDifficulties
+        categories: categories,
+        difficulties: difficulties,
+        categoriesParam: categoriesParam,
+        difficultiesParam: difficultiesParam
     });
     
     // 1. Try Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'GET_QUESTION_STATS',
-        categories: window.trivia.selectedCategories,
-        difficulties: window.trivia.selectedDifficulties
+        categories: categories,
+        difficulties: difficulties
     });
     console.log("📤 Sent GET_QUESTION_STATS via Twitch messaging");
     
-    // 2. Also try direct API call as backup
-    fetch(`/api/sample-questions?categories=${categoriesParam}&difficulties=${difficultiesParam}&limit=0`, {
-        method: 'GET'
+    // 2. Also try direct server endpoint
+    fetch('/twitch/message', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            channelId: window.broadcasterId || "70361469",
+            message: {
+                type: 'GET_QUESTION_STATS',
+                categories: categories,
+                difficulties: difficulties
+            }
+        })
     })
     .then(response => response.json())
     .then(data => {
-        console.log("📊 Direct API question stats response:", data);
-        window.trivia.totalQuestions = data.totalMatching || 0;
-        updateQuestionStatsDisplay({
-            totalMatching: data.totalMatching || 0,
-            filters: data.filters
-        });
+        console.log("📊 Server endpoint response for stats:", data);
     })
     .catch(error => {
-        console.error("❌ Error getting question stats via direct API:", error);
+        console.error("❌ Error with server stats endpoint:", error);
     });
+    
+    // 3. Try direct API call with proper parameters
+    let apiUrl = '/api/sample-questions';
+    const params = [];
+    
+    if (categoriesParam) params.push(`categories=${categoriesParam}`);
+    if (difficultiesParam) params.push(`difficulties=${difficultiesParam}`);
+    params.push('limit=0');  // Don't return actual questions, just counts
+    
+    if (params.length > 0) {
+        apiUrl += '?' + params.join('&');
+    }
+    
+    console.log("📊 Requesting stats from:", apiUrl);
+    
+    fetch(apiUrl)
+        .then(response => {
+            console.log("📊 Stats API status:", response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log("📊 Direct API question stats response:", data);
+            window.trivia.totalQuestions = data.totalMatching || 0;
+            updateQuestionStatsDisplay({
+                totalMatching: data.totalMatching || 0,
+                filters: data.filters
+            });
+        })
+        .catch(error => {
+            console.error("❌ Error getting question stats via direct API:", error);
+            // Still update display with what we know
+            updateQuestionStatsDisplay({
+                totalMatching: window.trivia.totalQuestions || 0
+            });
+        });
     
     // Update UI while waiting for response
     document.getElementById("question-stats").innerHTML = "<div class='loading'>Loading question statistics...</div>";

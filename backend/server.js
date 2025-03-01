@@ -101,8 +101,6 @@ app.options('/twitch/message', cors(corsOptions), (req, res) => {
   res.status(204).send();
 });
 
-const qs = require('querystring');
-
 async function getTwitchOAuthToken() {
     try {
         const response = await axios.post(

@@ -444,16 +444,8 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
                 timePercentage: data.timePercentage
             };
             
-            // Optionally show points immediately if answer is correct
-            if (selectedChoice === correctAnswer) {
-                const pointsInfo = document.createElement("div");
-                pointsInfo.className = "points-info";
-                pointsInfo.innerHTML = `
-                    <span class="points">+${data.pointsEarned} points!</span>
-                    <span class="time-bonus">${data.timePercentage}% time bonus</span>
-                `;
-                button.parentNode.appendChild(pointsInfo);
-            }
+            // We removed the immediate point display here to prevent double-stacking
+            // Points will be shown when the timer runs out
         }
     })
     .catch(error => {

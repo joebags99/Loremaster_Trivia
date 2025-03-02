@@ -990,6 +990,7 @@ const EXT_CLIENT_ID = process.env.EXT_CLIENT_ID;
 const EXT_OWNER_ID = process.env.EXT_OWNER_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID || "70361469";
 const EXT_SECRET = process.env.EXT_SECRET;
+const extSecretRaw = Buffer.from(EXT_SECRET, 'base64');
 
 if (!EXT_CLIENT_ID || !EXT_OWNER_ID || !EXT_SECRET) {
   console.error("❌ ERROR: Missing required environment variables!");

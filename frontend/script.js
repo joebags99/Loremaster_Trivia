@@ -20,18 +20,17 @@ window.Twitch.ext.onAuthorized((auth) => {
     console.log("✅ User Authorized:", userId);
     
     // Get Twitch username if available
-    if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.id) {
+    if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.opaqueId) {
       twitchUsername = window.Twitch.ext.viewer.displayName || `User-${auth.userId.substring(0, 5)}`;
       console.log("👤 Viewer username:", twitchUsername);
-      
-      // Send identity to server for username tracking
-      sendTwitchIdentity();
     }
+    
+    // Send username to server (this is the new line)
+    sendUsername();
     
     // Fetch the user's score from the database
     fetchUserScore(userId);
-  });
-
+  });  
 
 // --- DOM Elements ---
 const waitingScreen = document.getElementById("waiting-screen");
@@ -188,6 +187,48 @@ function sendTwitchIdentity() {
     })
     .catch(error => {
       console.error("❌ Error sending identity data:", error);
+    });
+  }
+
+  function sendUsername() {
+    if (!userId) {
+      console.warn("⚠️ Cannot send username: User ID is missing");
+      return;
+    }
+    
+    // Get displayName from Twitch Extension
+    let username = null;
+    
+    // Try different methods to get the username
+    if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.displayName) {
+      username = window.Twitch.ext.viewer.displayName;
+    } else if (twitchUsername) {
+      username = twitchUsername;
+    }
+    
+    if (!username) {
+      console.warn("⚠️ No username available to send");
+      return;
+    }
+    
+    console.log(`👤 Sending username to server: ${username} for user ID: ${userId}`);
+    
+    fetch("/api/set-username", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        userId: userId,
+        username: username
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      console.log("✅ Username sent successfully:", data);
+    })
+    .catch(error => {
+      console.error("❌ Error sending username:", error);
     });
   }
 
@@ -424,12 +465,14 @@ function displayScores(totalScore, sessionScore) {
 
 
 // Update selectAnswer function to handle both scores and better error handling
-// Your existing selectAnswer function with username added:
 function selectAnswer(button, selectedChoice, correctAnswer) {
     if (!userId) {
-        console.warn("⚠ User ID missing. Cannot track score.");
-        return;
+      console.warn("⚠ User ID missing. Cannot track score.");
+      return;
     }
+    
+    // Try to send username if we have it but haven't sent it yet
+    sendUsername();
     
     console.log("User selected:", selectedChoice, " | Correct answer:", correctAnswer);
     

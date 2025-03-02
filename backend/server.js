@@ -104,14 +104,27 @@ async function getTwitchOAuthToken() {
   try {
     console.log("🔑 Requesting Twitch OAuth token...");
     
+    // Check if we have required environment variables
+    if (!process.env.EXT_CLIENT_ID || !process.env.EXT_SECRET) {
+      console.error("❌ Missing required environment variables for Twitch OAuth");
+      console.error(`Client ID exists: ${!!process.env.EXT_CLIENT_ID}, Secret exists: ${!!process.env.EXT_SECRET}`);
+      return null;
+    }
+    
+    // Create proper form data
+    const formData = new URLSearchParams();
+    formData.append('client_id', process.env.EXT_CLIENT_ID);
+    formData.append('client_secret', process.env.EXT_SECRET);
+    formData.append('grant_type', 'client_credentials');
+    
+    console.log(`🔍 Using Client ID: ${process.env.EXT_CLIENT_ID.substring(0, 5)}...`);
+    
     const response = await axios.post(
       'https://id.twitch.tv/oauth2/token',
-      qs.stringify({
-        client_id: process.env.EXT_CLIENT_ID,
-        client_secret: process.env.EXT_SECRET,
-        grant_type: 'client_credentials'
-      }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      formData.toString(),
+      { 
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      }
     );
 
     console.log("✅ Twitch OAuth Token received successfully");
@@ -121,6 +134,7 @@ async function getTwitchOAuthToken() {
     return null;
   }
 }
+
 
 // Get usernames for a list of user IDs
 async function fetchUsernames(userIds) {
@@ -134,64 +148,62 @@ async function fetchUsernames(userIds) {
       return;
     }
     
-    // Process in batches of 100 (Twitch API limit)
-    const batchSize = 100;
-    for (let i = 0; i < userIds.length; i += batchSize) {
-      const batch = userIds.slice(i, i + batchSize);
+    // Log the IDs we're trying to fetch
+    console.log(`🔍 Attempting to fetch usernames for IDs:`, userIds.slice(0, 5));
+    
+    // FIRST APPROACH: Try to get usernames using Helix API for Extension-specific IDs
+    try {
+      // Process in batches of 100 (Twitch API limit)
+      const batchSize = 100;
       
-      // Build query params
-      const idParams = batch.map(id => `id=${id}`).join('&');
-      
-      // Make API request
-      const response = await axios.get(
-        `https://api.twitch.tv/helix/users?${idParams}`,
-        {
-          headers: {
-            'Client-ID': process.env.EXT_CLIENT_ID,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-      
-      // Update cache with response data
-      if (response.data && response.data.data) {
-        response.data.data.forEach(user => {
-          userIdToUsername[user.id] = user.display_name;
+      for (let i = 0; i < userIds.length; i += batchSize) {
+        const batch = userIds.slice(i, i + batchSize);
+        
+        // This format is required for Helix API - notice we're using '&id=' multiple times, not comma-separated
+        const queryParams = new URLSearchParams();
+        batch.forEach(id => {
+          // Ensure ID is properly formatted (no special chars, etc)
+          queryParams.append('id', id.trim());
         });
+        
+        console.log(`🔍 Fetching batch ${i/batchSize + 1}, first ID: ${batch[0]}`);
+        
+        const response = await axios.get(
+          `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
+          {
+            headers: {
+              'Client-ID': process.env.EXT_CLIENT_ID,
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (response.data && response.data.data && response.data.data.length > 0) {
+          console.log(`✅ Successfully retrieved ${response.data.data.length} usernames`);
+          
+          // Update cache with response data
+          response.data.data.forEach(user => {
+            userIdToUsername[user.id] = user.display_name;
+          });
+        } else {
+          console.log(`⚠️ No users found in batch ${i/batchSize + 1}`);
+        }
       }
+    } catch (helix_error) {
+      console.error('❌ Error using Helix API:', helix_error.response?.data || helix_error.message);
+      console.log('⚠️ Helix API failed, attempting alternative approach...');
+      
+      // FALLBACK: Use custom mapping or local storage
+      // This is where you'd implement any custom/manual username mapping
     }
     
-    console.log(`✅ Retrieved usernames for ${userIds.length} users`);
+    // Log how many usernames we have in total now
+    console.log(`📊 We now have ${Object.keys(userIdToUsername).length} username mappings`);
+    
   } catch (error) {
-    console.error('❌ Error fetching Twitch usernames:', error.response?.data || error.message);
-    throw error; // Re-throw to handle in the calling function
+    console.error('❌ Error in fetchUsernames:', error.message || error);
   }
 }
-
-function logUsernameStats() {
-  const userCount = Object.keys(userIdToUsername).length;
-  console.log(`📊 Current username mappings: ${userCount} users`);
-  if (userCount > 0) {
-    const sampleEntries = Object.entries(userIdToUsername).slice(0, 3);
-    console.log("📊 Sample username mappings:", sampleEntries);
-  }
-}
-
-// Create Sequelize instance
-const sequelize = new Sequelize({
-  dialect: "mysql",
-  host: process.env.DB_HOST,
-  username: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  logging: console.log, // Set to false in production
-  pool: {
-    max: 5,
-    min: 0,
-    acquire: 30000,
-    idle: 10000
-  }
-});
 
 // Define Score model
 const Score = sequelize.define("Score", {
@@ -1458,14 +1470,61 @@ app.get("/api/categories", async (req, res) => {
 });
 
 // Simple test endpoint for debugging
-app.get("/api/test", (req, res) => {
-  // Set explicit CORS headers
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
-  console.log("✅ Test endpoint called successfully");
-  res.json({ success: true, message: "API is working correctly" });
+app.get("/api/test-twitch-api", async (req, res) => {
+  try {
+    // Get a sample user ID from our database
+    const sampleUser = await Score.findOne();
+    const testUserId = sampleUser ? sampleUser.userId : null;
+    
+    if (!testUserId) {
+      return res.json({ 
+        success: false, 
+        message: "No user IDs available to test with" 
+      });
+    }
+    
+    console.log(`🧪 Testing Twitch API with user ID: ${testUserId}`);
+    
+    // Try to fetch username
+    const token = await getTwitchOAuthToken();
+    if (!token) {
+      return res.json({ 
+        success: false, 
+        message: "Could not obtain OAuth token" 
+      });
+    }
+    
+    // Use proper URL encoding for the ID
+    const queryParams = new URLSearchParams();
+    queryParams.append('id', testUserId);
+    
+    const response = await axios.get(
+      `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
+      {
+        headers: {
+          'Client-ID': process.env.EXT_CLIENT_ID,
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+    
+    // Return detailed test results
+    res.json({
+      success: true,
+      message: "Twitch API test completed",
+      testUserId: testUserId,
+      response: response.data,
+      usernameMappings: Object.keys(userIdToUsername).length
+    });
+    
+  } catch (error) {
+    console.error("❌ Error testing Twitch API:", error.response?.data || error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      details: error.response?.data || {}
+    });
+  }
 });
 
 // Get all available difficulties
@@ -1711,6 +1770,47 @@ app.post("/api/add-username", express.json(), (req, res) => {
   
   twitchUsernames[userId] = username;
   res.json({ success: true, message: `Username ${username} added for ${userId}` });
+});
+
+app.post("/api/set-username", express.json(), (req, res) => {
+  try {
+    const { userId, username } = req.body;
+    
+    if (!userId || !username) {
+      return res.status(400).json({ 
+        success: false,
+        error: "Missing userId or username" 
+      });
+    }
+    
+    // Store username in memory
+    userIdToUsername[userId] = username;
+    console.log(`👤 Manually set username for ${userId}: ${username}`);
+    
+    // Try to update in database
+    Score.findByPk(userId).then(userScore => {
+      if (userScore) {
+        userScore.username = username;
+        return userScore.save();
+      }
+    }).catch(err => {
+      console.error("❌ Error updating username in database:", err);
+    });
+    
+    // Return success
+    res.json({ 
+      success: true, 
+      message: "Username set successfully",
+      currentMappings: Object.keys(userIdToUsername).length
+    });
+    
+  } catch (error) {
+    console.error("❌ Error setting username:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "Server error" 
+    });
+  }
 });
 
 // ✅ Handle Twitch extension message handler

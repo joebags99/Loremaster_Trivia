@@ -135,6 +135,52 @@ async function getTwitchOAuthToken() {
   }
 }
 
+// Initialize Sequelize with your database connection
+const sequelize = new Sequelize({
+  dialect: 'mysql',  // Change this if using a different database
+  host: process.env.DB_HOST,
+  username: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  logging: false  // Set to console.log to see SQL queries
+});
+
+// Define Score model
+const Score = sequelize.define("Score", {
+  userId: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    primaryKey: true,
+    comment: "Twitch User ID"
+  },
+  username: {  // NEW FIELD!
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Twitch Display Name"
+  },
+  score: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Total score of the user"
+  },
+  lastUpdated: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: Sequelize.NOW,
+    comment: "Last time the score was updated"
+  }
+}, {
+  tableName: "user_scores",
+  timestamps: true,
+  updatedAt: "lastUpdated",
+  indexes: [
+    {
+      unique: true,
+      fields: ["userId"]
+    }
+  ]
+});
 
 // Get usernames for a list of user IDs
 async function fetchUsernames(userIds) {
@@ -204,43 +250,6 @@ async function fetchUsernames(userIds) {
     console.error('❌ Error in fetchUsernames:', error.message || error);
   }
 }
-
-// Define Score model
-const Score = sequelize.define("Score", {
-  userId: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    primaryKey: true,
-    comment: "Twitch User ID"
-  },
-  username: {  // NEW FIELD!
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: "Twitch Display Name"
-  },
-  score: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 0,
-    comment: "Total score of the user"
-  },
-  lastUpdated: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: Sequelize.NOW,
-    comment: "Last time the score was updated"
-  }
-}, {
-  tableName: "user_scores",
-  timestamps: true,
-  updatedAt: "lastUpdated",
-  indexes: [
-    {
-      unique: true,
-      fields: ["userId"]
-    }
-  ]
-});
 
 // ✅ Define TriviaQuestion model to match your database structure
 const TriviaQuestion = sequelize.define("TriviaQuestion", {

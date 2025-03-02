@@ -168,6 +168,15 @@ async function fetchUsernames(userIds) {
   }
 }
 
+function logUsernameStats() {
+  const userCount = Object.keys(userIdToUsername).length;
+  console.log(`📊 Current username mappings: ${userCount} users`);
+  if (userCount > 0) {
+    const sampleEntries = Object.entries(userIdToUsername).slice(0, 3);
+    console.log("📊 Sample username mappings:", sampleEntries);
+  }
+}
+
 // Create Sequelize instance
 const sequelize = new Sequelize({
   dialect: "mysql",
@@ -315,6 +324,10 @@ async function initDatabase() {
     // Sync models with database (create tables if they don't exist)
     await sequelize.sync();
     console.log("✅ Database tables synchronized.");
+    
+    // Run database structure debug
+    await debugDatabaseStructure();
+    
   } catch (error) {
     console.error("❌ Unable to connect to the database:", error);
     // Don't exit the process - the app can still work without DB
@@ -608,6 +621,40 @@ async function broadcastToTwitch(channelId, message) {
   }
 }
 
+app.post("/extension-identity", express.json(), (req, res) => {
+  try {
+    const { userId, username } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: "Missing userId" });
+    }
+    
+    // Store username if provided
+    if (username) {
+      console.log(`👤 Received extension identity: User ${userId} is "${username}"`);
+      userIdToUsername[userId] = username;
+      
+      // Also update in database if possible
+      Score.findByPk(userId).then(userScore => {
+        if (userScore) {
+          userScore.username = username;
+          return userScore.save();
+        }
+      }).catch(err => {
+        console.error("❌ Error updating username in database:", err);
+      });
+    }
+    
+    // Log stats after update
+    logUsernameStats();
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("❌ Error in extension-identity endpoint:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // ✅ Middleware: Verify Twitch JWT tokens for secured routes
 function verifyTwitchJWT(req, res, next) {
   const auth = req.headers.authorization;
@@ -702,6 +749,8 @@ app.post("/start-trivia", async (req, res) => {
       return res.status(500).json({ success: false, error: "Failed to start trivia." });
   }
 });
+
+
 
 // ✅ IMPROVED: Send Trivia Question from Database
 async function sendTriviaQuestion(channelId) {
@@ -1434,6 +1483,49 @@ app.get("/api/difficulties", async (req, res) => {
     res.status(500).json({ error: "Failed to get difficulties" });
   }
 });
+
+// Debug function to check database structure 
+async function debugDatabaseStructure() {
+  try {
+    console.log("🔍 Checking database structure...");
+    
+    // Check if the username column exists
+    const [results] = await sequelize.query(
+      "SHOW COLUMNS FROM user_scores LIKE 'username'"
+    );
+    
+    if (results.length === 0) {
+      console.log("⚠️ Username column doesn't exist in database. Adding it now...");
+      
+      // Add the username column if it doesn't exist
+      await sequelize.query(
+        "ALTER TABLE user_scores ADD COLUMN username VARCHAR(255)"
+      );
+      console.log("✅ Username column added to database");
+    } else {
+      console.log("✅ Username column exists in database");
+    }
+    
+    // Check for sample user data
+    const users = await Score.findAll({ limit: 5 });
+    console.log("📊 Sample user data:", users.map(u => ({
+      userId: u.userId,
+      username: u.username,
+      score: u.score
+    })));
+    
+    // Check memory username mapping
+    console.log("📊 Memory username mapping sample:", 
+      Object.keys(userIdToUsername).slice(0, 5).map(key => ({
+        userId: key, 
+        username: userIdToUsername[key]
+      }))
+    );
+    
+  } catch (error) {
+    console.error("❌ Error checking database structure:", error);
+  }
+}
 
 // Get broadcaster's trivia settings
 app.get("/api/settings/:broadcasterId", async (req, res) => {

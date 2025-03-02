@@ -334,69 +334,88 @@ function initializeLeaderboard() {
 // Fetch leaderboard data from server
 function fetchLeaderboardData() {
     document.getElementById("leaderboard-body").innerHTML = `
-        <tr>
-            <td colspan="3" class="loading-text">Loading leaderboard data...</td>
-        </tr>
+      <tr>
+        <td colspan="3" class="loading-text">Loading leaderboard data...</td>
+      </tr>
     `;
     
+    console.log("🔍 Fetching leaderboard data...");
+    
     fetch('/api/leaderboard')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log("🏆 Leaderboard data received:", data);
-            
-            // Store the data globally
-            window.leaderboardData = data;
-            
-            // Display the appropriate board based on active button
-            if (document.getElementById("show-session-scores").classList.contains("active-board")) {
-                displayLeaderboard(data.session);
-            } else {
-                displayLeaderboard(data.total);
-            }
-        })
-        .catch(error => {
-            console.error("❌ Error fetching leaderboard:", error);
-            document.getElementById("leaderboard-body").innerHTML = `
-                <tr>
-                    <td colspan="3" class="loading-text">Error loading leaderboard: ${error.message}</td>
-                </tr>
-            `;
-        });
-}
+      .then(response => {
+        console.log("🔍 Leaderboard response status:", response.status);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log("🏆 Leaderboard data received:", data);
+        
+        // IMPORTANT: Add detailed logging to debug username issues
+        if (data.total && data.total.length > 0) {
+          console.log("🔍 First few total leaderboard entries:", data.total.slice(0, 3));
+        }
+        
+        if (data.session && data.session.length > 0) {
+          console.log("🔍 First few session leaderboard entries:", data.session.slice(0, 3));
+        }
+        
+        // Store the data globally
+        window.leaderboardData = data;
+        
+        // Display the appropriate board based on active button
+        if (document.getElementById("show-session-scores").classList.contains("active-board")) {
+          displayLeaderboard(data.session || []);
+        } else {
+          displayLeaderboard(data.total || []);
+        }
+      })
+      .catch(error => {
+        console.error("❌ Error fetching leaderboard:", error);
+        document.getElementById("leaderboard-body").innerHTML = `
+          <tr>
+            <td colspan="3" class="loading-text">Error loading leaderboard: ${error.message}</td>
+          </tr>
+        `;
+      });
+  }
 
 // Display leaderboard data in the table
 function displayLeaderboard(scores) {
     const tbody = document.getElementById("leaderboard-body");
     
     if (!scores || scores.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="3" class="loading-text">No scores to display yet</td>
-            </tr>
-        `;
-        return;
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="3" class="loading-text">No scores to display yet</td>
+        </tr>
+      `;
+      return;
     }
     
     let html = '';
     
     scores.forEach((entry, index) => {
-        const rank = index + 1;
-        html += `
-            <tr class="rank-${rank}">
-                <td>${rank}</td>
-                <td>${escapeHtml(entry.username)}</td>
-                <td>${entry.score.toLocaleString()}</td>
-            </tr>
-        `;
+      const rank = index + 1;
+      
+      // Ensure username exists, fall back to userId with more readable formatting
+      const displayName = entry.username 
+        ? escapeHtml(entry.username)
+        : `User-${entry.userId ? entry.userId.substring(0, 5) : 'Unknown'}`;
+        
+      html += `
+        <tr class="rank-${rank}">
+          <td>${rank}</td>
+          <td>${displayName}</td>
+          <td>${entry.score.toLocaleString()}</td>
+        </tr>
+      `;
     });
     
     tbody.innerHTML = html;
-}
+    console.log(`✅ Displayed ${scores.length} entries in leaderboard`);
+  }
 
 // Show session scores
 function showSessionScores() {

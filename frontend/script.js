@@ -20,14 +20,17 @@ window.Twitch.ext.onAuthorized((auth) => {
     console.log("✅ User Authorized:", userId);
     
     // Get Twitch username if available
-    if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.opaqueId) {
-        twitchUsername = window.Twitch.ext.viewer.displayName || `User-${auth.userId.substring(0, 5)}`;
-        console.log("👤 Viewer username:", twitchUsername);
+    if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.id) {
+      twitchUsername = window.Twitch.ext.viewer.displayName || `User-${auth.userId.substring(0, 5)}`;
+      console.log("👤 Viewer username:", twitchUsername);
+      
+      // Send identity to server for username tracking
+      sendTwitchIdentity();
     }
     
     // Fetch the user's score from the database
     fetchUserScore(userId);
-});
+  });
 
 
 // --- DOM Elements ---
@@ -157,6 +160,36 @@ function fetchUserScore(userId) {
             displayScores(0, 0);
         });
 }
+
+function sendTwitchIdentity() {
+    if (!window.Twitch.ext.viewer || !window.Twitch.ext.viewer.id) {
+      console.log("⚠️ Twitch identity not available yet");
+      return;
+    }
+    
+    const identityData = {
+      userId: window.Twitch.ext.viewer.id,
+      username: window.Twitch.ext.viewer.displayName || null,
+      role: window.Twitch.ext.viewer.role || null
+    };
+    
+    console.log("👤 Sending identity data to server:", identityData);
+    
+    fetch("/extension-identity", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(identityData)
+    })
+    .then(response => response.json())
+    .then(data => {
+      console.log("✅ Identity data sent successfully", data);
+    })
+    .catch(error => {
+      console.error("❌ Error sending identity data:", error);
+    });
+  }
 
 // ✅ Improved countdown update function
 function updateCountdown(timeRemaining) {

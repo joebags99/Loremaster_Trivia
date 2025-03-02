@@ -12,11 +12,78 @@ const fs = require("fs");
 const qs = require('querystring');
 const path = require("path");
 const { Console } = require("console");
-const userIdToUsername = {};
 const { Sequelize, DataTypes } = require("sequelize");
 const PORT = process.env.PORT || 5000; // default port
 
-// Configure CORS for Twitch EBS - MOVED UP to fix reference error
+// Debug environment variables
+console.log("========== ENVIRONMENT VARIABLES DEBUG ==========");
+console.log(`PORT: ${process.env.PORT || "(using default 5000)"}`);
+console.log(`DB_HOST: ${process.env.DB_HOST ? "DEFINED" : "UNDEFINED"}`);
+console.log(`DB_USER: ${process.env.DB_USER ? "DEFINED" : "UNDEFINED"}`);
+console.log(`DB_NAME: ${process.env.DB_NAME ? "DEFINED" : "UNDEFINED"}`);
+console.log(`DB_PASS: ${process.env.DB_PASS ? "DEFINED (length: " + process.env.DB_PASS.length + ")" : "UNDEFINED"}`);
+console.log(`EXT_CLIENT_ID: ${process.env.EXT_CLIENT_ID ? "DEFINED" : "UNDEFINED"}`);
+console.log(`EXT_SECRET: ${process.env.EXT_SECRET ? "DEFINED" : "UNDEFINED"}`);
+console.log(`EXT_OWNER_ID: ${process.env.EXT_OWNER_ID ? "DEFINED" : "UNDEFINED"}`);
+console.log("=================================================");
+
+// Check for missing database config and warn
+if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME || !process.env.DB_PASS) {
+  console.error("❌ WARNING: Missing required database environment variables!");
+  console.error("Please check your .env file and make sure it's in the correct location:");
+  console.error(`Current .env path: ${__dirname + "/.env"}`);
+  console.error("Your .env file should contain: DB_HOST, DB_USER, DB_NAME, DB_PASS");
+  
+  // List all .env files in the directory to help troubleshoot
+  try {
+    const files = fs.readdirSync(__dirname);
+    const envFiles = files.filter(file => file.includes('.env'));
+    console.error("Found these environment files:", envFiles);
+  } catch (err) {
+    console.error("Could not read directory to find .env files");
+  }
+}
+
+// Initialize Sequelize with better error handling
+const sequelize = new Sequelize({
+  dialect: 'mysql',
+  host: process.env.DB_HOST || 'localhost',
+  username: process.env.DB_USER || 'root',
+  password: process.env.DB_PASS || '', // Fallback to empty string
+  database: process.env.DB_NAME || 'loremaster_trivia',
+  logging: false,
+  dialectOptions: {
+    connectTimeout: 20000 // Longer timeout for connection
+  }
+});
+
+// Global username mappings
+const userIdToUsername = {};
+// Global state variables
+const usersScores = {}; // Stores scores { "twitchUserID": score }
+const userSessionScores = {}; // Stores session scores { "twitchUserID": score }
+let triviaActive = false; // ✅ Trivia is inactive until manually started
+let triviaRoundEndTime = 0; // Prevents countdown updates during an active trivia round
+let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
+let questionInProgress = false; // ✅ Prevents multiple questions at once
+let usedQuestions = []; // Avoiding Repeat Questions
+
+// Test the database connection immediately
+(async () => {
+  try {
+    await sequelize.authenticate();
+    console.log('✅ Database connection established successfully.');
+  } catch (error) {
+    console.error('❌ Unable to connect to the database:');
+    console.error(error.message);
+    if (error.original) {
+      console.error('Original error:', error.original.message);
+    }
+    console.error('Continuing without database persistence. Scores will be lost on server restart.');
+  }
+})();
+
+// Configure CORS for Twitch EBS
 const corsOptions = {
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, etc.)
@@ -63,11 +130,11 @@ const corsOptions = {
 // Initialize Express app
 const app = express();
 
-// Add proper body parser middleware - THIS IS CRUCIAL
+// Add proper body parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Also helpful to log incoming requests for debugging
+// Log incoming requests for debugging
 app.use((req, res, next) => {
   if (req.method === 'POST' && req.path === '/submit-answer') {
     console.log(`📩 Received answer submission with content-type: ${req.headers['content-type']}`);
@@ -83,66 +150,12 @@ app.use((req, res, next) => {
 // Apply CORS to all routes
 app.use(cors(corsOptions));
 
-// Global state variables
-const usersScores = {}; // Stores scores { "twitchUserID": score }
-const userSessionScores = {}; // Stores session scores { "twitchUserID": score }
-let triviaActive = false; // ✅ Trivia is inactive until manually started
-let triviaRoundEndTime = 0; // Prevents countdown updates during an active trivia round
-let nextQuestionTime = null; // ✅ Prevents unnecessary calls to /get-next-question on startup
-let questionInProgress = false; // ✅ Prevents multiple questions at once
-let usedQuestions = []; // Avoiding Repeat Questions
-
 // Handle OPTIONS requests for CORS preflight
 app.options('*', cors(corsOptions));
 
 // Add specific options handler for the Twitch message endpoint
 app.options('/twitch/message', cors(corsOptions), (req, res) => {
   res.status(204).send();
-});
-
-async function getTwitchOAuthToken() {
-  try {
-    console.log("🔑 Requesting Twitch OAuth token...");
-    
-    // Check if we have required environment variables
-    if (!process.env.EXT_CLIENT_ID || !process.env.EXT_SECRET) {
-      console.error("❌ Missing required environment variables for Twitch OAuth");
-      console.error(`Client ID exists: ${!!process.env.EXT_CLIENT_ID}, Secret exists: ${!!process.env.EXT_SECRET}`);
-      return null;
-    }
-    
-    // Create proper form data
-    const formData = new URLSearchParams();
-    formData.append('client_id', process.env.EXT_CLIENT_ID);
-    formData.append('client_secret', process.env.EXT_SECRET);
-    formData.append('grant_type', 'client_credentials');
-    
-    console.log(`🔍 Using Client ID: ${process.env.EXT_CLIENT_ID.substring(0, 5)}...`);
-    
-    const response = await axios.post(
-      'https://id.twitch.tv/oauth2/token',
-      formData.toString(),
-      { 
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      }
-    );
-
-    console.log("✅ Twitch OAuth Token received successfully");
-    return response.data.access_token;
-  } catch (error) {
-    console.error("❌ Error getting Twitch OAuth token:", error.response?.data || error.message);
-    return null;
-  }
-}
-
-// Initialize Sequelize with your database connection
-const sequelize = new Sequelize({
-  dialect: 'mysql',  // Change this if using a different database
-  host: process.env.DB_HOST,
-  username: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-  logging: false  // Set to console.log to see SQL queries
 });
 
 // Define Score model
@@ -153,7 +166,7 @@ const Score = sequelize.define("Score", {
     primaryKey: true,
     comment: "Twitch User ID"
   },
-  username: {  // NEW FIELD!
+  username: {
     type: DataTypes.STRING,
     allowNull: true,
     comment: "Twitch Display Name"
@@ -182,76 +195,7 @@ const Score = sequelize.define("Score", {
   ]
 });
 
-// Get usernames for a list of user IDs
-async function fetchUsernames(userIds) {
-  if (!userIds || userIds.length === 0) return;
-  
-  try {
-    // Get OAuth token
-    const token = await getTwitchOAuthToken();
-    if (!token) {
-      console.error('❌ Failed to get Twitch OAuth token');
-      return;
-    }
-    
-    // Log the IDs we're trying to fetch
-    console.log(`🔍 Attempting to fetch usernames for IDs:`, userIds.slice(0, 5));
-    
-    // FIRST APPROACH: Try to get usernames using Helix API for Extension-specific IDs
-    try {
-      // Process in batches of 100 (Twitch API limit)
-      const batchSize = 100;
-      
-      for (let i = 0; i < userIds.length; i += batchSize) {
-        const batch = userIds.slice(i, i + batchSize);
-        
-        // This format is required for Helix API - notice we're using '&id=' multiple times, not comma-separated
-        const queryParams = new URLSearchParams();
-        batch.forEach(id => {
-          // Ensure ID is properly formatted (no special chars, etc)
-          queryParams.append('id', id.trim());
-        });
-        
-        console.log(`🔍 Fetching batch ${i/batchSize + 1}, first ID: ${batch[0]}`);
-        
-        const response = await axios.get(
-          `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
-          {
-            headers: {
-              'Client-ID': process.env.EXT_CLIENT_ID,
-              'Authorization': `Bearer ${token}`
-            }
-          }
-        );
-        
-        if (response.data && response.data.data && response.data.data.length > 0) {
-          console.log(`✅ Successfully retrieved ${response.data.data.length} usernames`);
-          
-          // Update cache with response data
-          response.data.data.forEach(user => {
-            userIdToUsername[user.id] = user.display_name;
-          });
-        } else {
-          console.log(`⚠️ No users found in batch ${i/batchSize + 1}`);
-        }
-      }
-    } catch (helix_error) {
-      console.error('❌ Error using Helix API:', helix_error.response?.data || helix_error.message);
-      console.log('⚠️ Helix API failed, attempting alternative approach...');
-      
-      // FALLBACK: Use custom mapping or local storage
-      // This is where you'd implement any custom/manual username mapping
-    }
-    
-    // Log how many usernames we have in total now
-    console.log(`📊 We now have ${Object.keys(userIdToUsername).length} username mappings`);
-    
-  } catch (error) {
-    console.error('❌ Error in fetchUsernames:', error.message || error);
-  }
-}
-
-// ✅ Define TriviaQuestion model to match your database structure
+// Define TriviaQuestion model
 const TriviaQuestion = sequelize.define("TriviaQuestion", {
   id: {
     type: DataTypes.INTEGER,
@@ -295,7 +239,7 @@ const TriviaQuestion = sequelize.define("TriviaQuestion", {
   timestamps: false
 });
 
-// Define QuestionCategory model (for reference only - not required for basic functionality)
+// Define QuestionCategory model
 const QuestionCategory = sequelize.define("QuestionCategory", {
   id: {
     type: DataTypes.STRING(100),
@@ -314,7 +258,7 @@ const QuestionCategory = sequelize.define("QuestionCategory", {
   timestamps: false
 });
 
-// Define TriviaSettings model for broadcaster preferences
+// Define TriviaSettings model
 const TriviaSettings = sequelize.define("TriviaSettings", {
   broadcaster_id: {
     type: DataTypes.STRING(100),
@@ -333,6 +277,330 @@ const TriviaSettings = sequelize.define("TriviaSettings", {
 }, {
   tableName: "trivia_settings",
   timestamps: false
+});
+
+// Function to get Twitch OAuth token with better error handling
+async function getTwitchOAuthToken() {
+  try {
+    console.log("🔑 Requesting Twitch OAuth token...");
+    
+    // Check if we have required environment variables
+    if (!process.env.EXT_CLIENT_ID || !process.env.EXT_SECRET) {
+      console.error("❌ Missing required environment variables for Twitch OAuth");
+      console.error(`Client ID exists: ${!!process.env.EXT_CLIENT_ID}, Secret exists: ${!!process.env.EXT_SECRET}`);
+      return null;
+    }
+    
+    // Create proper form data
+    const formData = new URLSearchParams();
+    formData.append('client_id', process.env.EXT_CLIENT_ID);
+    formData.append('client_secret', process.env.EXT_SECRET);
+    formData.append('grant_type', 'client_credentials');
+    
+    console.log(`🔍 Using Client ID: ${process.env.EXT_CLIENT_ID.substring(0, 5)}...`);
+    
+    const response = await axios.post(
+      'https://id.twitch.tv/oauth2/token',
+      formData.toString(),
+      { 
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      }
+    );
+
+    console.log("✅ Twitch OAuth Token received successfully");
+    return response.data.access_token;
+  } catch (error) {
+    console.error("❌ Error getting Twitch OAuth token:", error.response?.data || error.message);
+    return null;
+  }
+}
+
+// Improved function to fetch usernames
+async function fetchUsernames(userIds) {
+  if (!userIds || userIds.length === 0) return;
+  
+  try {
+    // Get OAuth token
+    const token = await getTwitchOAuthToken();
+    if (!token) {
+      console.error('❌ Failed to get Twitch OAuth token');
+      return;
+    }
+    
+    // Log the IDs we're trying to fetch
+    console.log(`🔍 Attempting to fetch usernames for IDs:`, userIds.slice(0, 5));
+    
+    // Process in batches of 100 (Twitch API limit)
+    const batchSize = 100;
+    
+    for (let i = 0; i < userIds.length; i += batchSize) {
+      const batch = userIds.slice(i, i + batchSize);
+      
+      // This format is required for Helix API
+      const queryParams = new URLSearchParams();
+      batch.forEach(id => {
+        // Ensure ID is properly formatted (no special chars, etc)
+        queryParams.append('id', id.trim());
+      });
+      
+      console.log(`🔍 Fetching batch ${Math.floor(i/batchSize) + 1}, first ID: ${batch[0]}`);
+      
+      try {
+        const response = await axios.get(
+          `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
+          {
+            headers: {
+              'Client-ID': process.env.EXT_CLIENT_ID,
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (response.data && response.data.data && response.data.data.length > 0) {
+          console.log(`✅ Successfully retrieved ${response.data.data.length} usernames`);
+          
+          // Update cache with response data
+          response.data.data.forEach(user => {
+            userIdToUsername[user.id] = user.display_name;
+          });
+        } else {
+          console.log(`⚠️ No users found in batch ${Math.floor(i/batchSize) + 1}`);
+        }
+      } catch (batchError) {
+        console.error(`❌ Error fetching batch ${Math.floor(i/batchSize) + 1}:`, 
+          batchError.response?.data || batchError.message);
+      }
+    }
+    
+    // Log how many usernames we have in total now
+    console.log(`📊 We now have ${Object.keys(userIdToUsername).length} username mappings`);
+    
+  } catch (error) {
+    console.error('❌ Error in fetchUsernames:', error.message || error);
+  }
+}
+
+// Debug function to check database structure 
+async function debugDatabaseStructure() {
+  try {
+    console.log("🔍 Checking database structure...");
+    
+    // Check if the username column exists
+    const [results] = await sequelize.query(
+      "SHOW COLUMNS FROM user_scores LIKE 'username'"
+    );
+    
+    if (results.length === 0) {
+      console.log("⚠️ Username column doesn't exist in database. Adding it now...");
+      
+      // Add the username column if it doesn't exist
+      await sequelize.query(
+        "ALTER TABLE user_scores ADD COLUMN username VARCHAR(255)"
+      );
+      console.log("✅ Username column added to database");
+    } else {
+      console.log("✅ Username column exists in database");
+    }
+    
+    // Check for sample user data
+    const users = await Score.findAll({ limit: 5 });
+    console.log("📊 Sample user data:", users.map(u => ({
+      userId: u.userId,
+      username: u.username,
+      score: u.score
+    })));
+    
+    // Check memory username mapping
+    console.log("📊 Memory username mapping sample:", 
+      Object.keys(userIdToUsername).slice(0, 5).map(key => ({
+        userId: key, 
+        username: userIdToUsername[key]
+      }))
+    );
+    
+  } catch (error) {
+    console.error("❌ Error checking database structure:", error);
+  }
+}
+
+// Initialize database connection
+async function initDatabase() {
+  try {
+    // Test the connection
+    await sequelize.authenticate();
+    console.log("✅ Database connection established successfully.");
+    
+    // Sync models with database (create tables if they don't exist)
+    await sequelize.sync();
+    console.log("✅ Database tables synchronized.");
+    
+    // Run database structure debug
+    await debugDatabaseStructure();
+    
+  } catch (error) {
+    console.error("❌ Unable to connect to the database:", error);
+    // Don't exit the process - the app can still work without DB
+    console.warn("⚠️ Continuing without database persistence. Scores will be lost on server restart.");
+  }
+}
+
+// Helper function to log username stats
+function logUsernameStats() {
+  const userCount = Object.keys(userIdToUsername).length;
+  console.log(`📊 Current username mappings: ${userCount} users`);
+  if (userCount > 0) {
+    const sampleEntries = Object.entries(userIdToUsername).slice(0, 3);
+    console.log("📊 Sample username mappings:", sampleEntries);
+  }
+}
+
+// Initialize database
+initDatabase().catch(error => {
+  console.error("❌ Database initialization failed:", error);
+});
+
+// Add username capture endpoint
+app.post("/api/set-username", express.json(), (req, res) => {
+  try {
+    const { userId, username } = req.body;
+    
+    if (!userId || !username) {
+      return res.status(400).json({ 
+        success: false,
+        error: "Missing userId or username" 
+      });
+    }
+    
+    // Store username in memory
+    userIdToUsername[userId] = username;
+    console.log(`👤 Manually set username for ${userId}: ${username}`);
+    
+    // Try to update in database
+    Score.findByPk(userId).then(userScore => {
+      if (userScore) {
+        userScore.username = username;
+        return userScore.save();
+      }
+    }).catch(err => {
+      console.error("❌ Error updating username in database:", err);
+    });
+    
+    // Return success
+    res.json({ 
+      success: true, 
+      message: "Username set successfully",
+      currentMappings: Object.keys(userIdToUsername).length
+    });
+    
+  } catch (error) {
+    console.error("❌ Error setting username:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "Server error" 
+    });
+  }
+});
+
+// Add extension identity endpoint
+app.post("/extension-identity", express.json(), (req, res) => {
+  try {
+    const { userId, username } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: "Missing userId" });
+    }
+    
+    // Store username if provided
+    if (username) {
+      console.log(`👤 Received extension identity: User ${userId} is "${username}"`);
+      userIdToUsername[userId] = username;
+      
+      // Also update in database if possible
+      Score.findByPk(userId).then(userScore => {
+        if (userScore) {
+          userScore.username = username;
+          return userScore.save();
+        }
+      }).catch(err => {
+        console.error("❌ Error updating username in database:", err);
+      });
+    }
+    
+    // Log stats after update
+    logUsernameStats();
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("❌ Error in extension-identity endpoint:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// New endpoint to get leaderboard data with improved username handling
+app.get("/api/leaderboard", async (req, res) => {
+  try {
+    // Get top scores from database
+    const dbScores = await Score.findAll({
+      order: [['score', 'DESC']],
+      limit: 20
+    });
+    
+    // Extract all user IDs
+    const allUserIds = Array.from(new Set([
+      ...dbScores.map(entry => entry.userId),
+      ...Object.keys(userSessionScores)
+    ]));
+    
+    // If we have missing usernames, try to fetch them from Twitch API
+    const missingIds = allUserIds.filter(id => !userIdToUsername[id]);
+    
+    if (missingIds.length > 0) {
+      console.log(`🔍 Fetching missing usernames for ${missingIds.length} users`);
+      try {
+        // Try to get usernames from Twitch API
+        await fetchUsernames(missingIds);
+      } catch (error) {
+        console.error("⚠️ Error fetching usernames from API:", error);
+        // Continue with what we have
+      }
+    }
+    
+    // Convert to a more usable format with usernames
+    const totalLeaderboard = dbScores.map(entry => {
+      return {
+        userId: entry.userId,
+        username: entry.username || userIdToUsername[entry.userId] || `User-${entry.userId.substring(0, 5)}...`,
+        score: entry.score
+      };
+    });
+    
+    // Sort session scores and get top 20
+    const sessionScores = Object.entries(userSessionScores)
+      .map(([userId, score]) => ({
+        userId,
+        username: userIdToUsername[userId] || `User-${userId.substring(0, 5)}...`,
+        score
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
+    
+    // Log the first few entries to debug
+    if (totalLeaderboard.length > 0) {
+      console.log("🏆 Total leaderboard sample:", totalLeaderboard.slice(0, 3));
+    }
+    
+    if (sessionScores.length > 0) {
+      console.log("🏆 Session leaderboard sample:", sessionScores.slice(0, 3));
+    }
+    
+    res.json({
+      total: totalLeaderboard,
+      session: sessionScores
+    });
+  } catch (error) {
+    console.error("❌ Error fetching leaderboard:", error);
+    res.status(500).json({ error: "Failed to fetch leaderboard" });
+  }
 });
 
 // Initialize database connection

@@ -47,10 +47,10 @@ if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME || !pro
 // Initialize Sequelize with better error handling
 const sequelize = new Sequelize({
   dialect: 'mysql',
-  host: process.env.DB_HOST || 'localhost',
-  username: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '', // Fallback to empty string
-  database: process.env.DB_NAME || 'loremaster_trivia',
+  host: process.env.DB_HOST,
+  username: process.env.DB_USER,
+  password: process.env.DB_PASS, 
+  database: process.env.DB_NAME,
   logging: false,
   dialectOptions: {
     connectTimeout: 20000 // Longer timeout for connection

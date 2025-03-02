@@ -1001,18 +1001,21 @@ console.log("✅ Using Extension Client ID:", EXT_CLIENT_ID);
 console.log("✅ Using Extension Owner ID:", EXT_OWNER_ID);
 console.log("✅ Target Channel ID:", CHANNEL_ID);
 
-// ✅ Generate JWT Token for Twitch PubSub authentication
+// Improved JWT token generation for Twitch PubSub authentication
 function generateToken() {
+  const now = Math.floor(Date.now() / 1000);
   return jwt.sign(
-      {
-          exp: Math.floor(Date.now() / 1000) + 60,
-          user_id: EXT_OWNER_ID,
-          role: "external",
-          channel_id: CHANNEL_ID.toString(),
-          pubsub_perms: { send: ["broadcast"] },
-      },
-      extSecretRaw,
-      { algorithm: "HS256" }
+    {
+      exp: now + 300, // 5 minutes expiration (longer than default 60 seconds)
+      iat: now, // issued at time
+      user_id: EXT_OWNER_ID,
+      role: "broadcaster", // Changed from "external" to "broadcaster"
+      channel_id: CHANNEL_ID.toString(),
+      pubsub_perms: { send: ["broadcast"] },
+      client_id: EXT_CLIENT_ID // Added client_id which is often required
+    },
+    extSecretRaw,
+    { algorithm: "HS256" }
   );
 }
 

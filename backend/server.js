@@ -1009,7 +1009,7 @@ function generateToken() {
       exp: now + 300, // 5 minutes expiration (longer than default 60 seconds)
       iat: now, // issued at time
       user_id: EXT_OWNER_ID,
-      role: "broadcaster", // Changed from "external" to "broadcaster"
+      role: "external", // CHANGE THIS LINE: from "broadcaster" to "external"
       channel_id: CHANNEL_ID.toString(),
       pubsub_perms: { send: ["broadcast"] },
       client_id: EXT_CLIENT_ID // Added client_id which is often required

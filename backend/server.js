@@ -990,7 +990,7 @@ const EXT_CLIENT_ID = process.env.EXT_CLIENT_ID;
 const EXT_OWNER_ID = process.env.EXT_OWNER_ID;
 const CHANNEL_ID = process.env.CHANNEL_ID || "70361469";
 const EXT_SECRET = process.env.EXT_SECRET;
-const extSecretRaw = Buffer.from(EXT_SECRET, 'base64');
+const extSecretBuffer = Buffer.from(EXT_SECRET, 'base64');
 
 if (!EXT_CLIENT_ID || !EXT_OWNER_ID || !EXT_SECRET) {
   console.error("❌ ERROR: Missing required environment variables!");
@@ -1004,25 +1004,42 @@ console.log("✅ Target Channel ID:", CHANNEL_ID);
 // Improved JWT token generation for Twitch PubSub authentication
 function generateToken() {
   const now = Math.floor(Date.now() / 1000);
-  return jwt.sign(
-    {
-      exp: now + 300, // 5 minutes expiration (longer than default 60 seconds)
-      iat: now, // issued at time
-      user_id: EXT_OWNER_ID,
-      role: "external", // CHANGE THIS LINE: from "broadcaster" to "external"
-      channel_id: CHANNEL_ID.toString(),
-      pubsub_perms: { send: ["broadcast"] },
-      client_id: EXT_CLIENT_ID // Added client_id which is often required
-    },
-    extSecretRaw,
-    { algorithm: "HS256" }
-  );
+  
+  const payload = {
+    exp: now + 300,
+    iat: now,
+    user_id: EXT_OWNER_ID,
+    role: "external",
+    channel_id: CHANNEL_ID,
+    pubsub_perms: {
+      send: ["broadcast"]
+    }
+  };
+  
+  // Always include client_id in the JWT
+  if (EXT_CLIENT_ID) {
+    payload.client_id = EXT_CLIENT_ID;
+  }
+  
+  try {
+    console.log("🔑 Generating JWT with payload:", JSON.stringify(payload));
+    return jwt.sign(payload, extSecretBuffer, { algorithm: "HS256" });
+  } catch (error) {
+    console.error("❌ Error generating JWT:", error);
+    return null;
+  }
 }
 
 // ✅ Helper: Broadcast to Twitch PubSub
 async function broadcastToTwitch(channelId, message) {
   try {
     const token = generateToken();
+    
+    if (!token) {
+      console.error("❌ Failed to generate valid JWT token");
+      return false;
+    }
+    
     const payload = {
       target: ["broadcast"],
       broadcaster_id: channelId.toString(),
@@ -1030,7 +1047,9 @@ async function broadcastToTwitch(channelId, message) {
       message: JSON.stringify(message),
     };
 
-    await axios.post(
+    console.log(`📡 Broadcasting to Twitch: ${message.type} for channel ${channelId}`);
+    
+    const response = await axios.post(
       "https://api.twitch.tv/helix/extensions/pubsub",
       payload,
       {
@@ -1041,10 +1060,17 @@ async function broadcastToTwitch(channelId, message) {
         },
       }
     );
-    console.log(`✅ Message type "${message.type}" broadcasted to channel ${channelId}`);
+    
+    console.log(`✅ Successfully broadcast message type "${message.type}" to channel ${channelId}`);
     return true;
   } catch (error) {
     console.error("❌ Error broadcasting to Twitch:", error.response?.data || error.message);
+    
+    // Log more details about the error
+    if (error.response && error.response.data) {
+      console.error("📄 Error details:", error.response.data);
+    }
+    
     return false;
   }
 }

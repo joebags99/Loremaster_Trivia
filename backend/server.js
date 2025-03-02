@@ -21,18 +21,18 @@ console.log(`PORT: ${process.env.PORT || "(using default 5000)"}`);
 console.log(`DB_HOST: ${process.env.DB_HOST ? "DEFINED" : "UNDEFINED"}`);
 console.log(`DB_USER: ${process.env.DB_USER ? "DEFINED" : "UNDEFINED"}`);
 console.log(`DB_NAME: ${process.env.DB_NAME ? "DEFINED" : "UNDEFINED"}`);
-console.log(`DB_PASS: ${process.env.DB_PASS ? "DEFINED (length: " + process.env.DB_PASS.length + ")" : "UNDEFINED"}`);
+console.log(`DB_PASSWORD: ${process.env.DB_PASSWORD ? "DEFINED (length: " + process.env.DB_PASSWORD.length + ")" : "UNDEFINED"}`);
 console.log(`EXT_CLIENT_ID: ${process.env.EXT_CLIENT_ID ? "DEFINED" : "UNDEFINED"}`);
 console.log(`EXT_SECRET: ${process.env.EXT_SECRET ? "DEFINED" : "UNDEFINED"}`);
 console.log(`EXT_OWNER_ID: ${process.env.EXT_OWNER_ID ? "DEFINED" : "UNDEFINED"}`);
 console.log("=================================================");
 
 // Check for missing database config and warn
-if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME || !process.env.DB_PASS) {
+if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME || !process.env.DB_PASSWORD) {
   console.error("❌ WARNING: Missing required database environment variables!");
   console.error("Please check your .env file and make sure it's in the correct location:");
   console.error(`Current .env path: ${__dirname + "/.env"}`);
-  console.error("Your .env file should contain: DB_HOST, DB_USER, DB_NAME, DB_PASS");
+  console.error("Your .env file should contain: DB_HOST, DB_USER, DB_NAME, DB_PASSWORD");
   
   // List all .env files in the directory to help troubleshoot
   try {
@@ -49,7 +49,7 @@ const sequelize = new Sequelize({
   dialect: 'mysql',
   host: process.env.DB_HOST,
   username: process.env.DB_USER,
-  password: process.env.DB_PASS, 
+  password: process.env.DB_PASSWORD, 
   database: process.env.DB_NAME,
   logging: false,
   dialectOptions: {

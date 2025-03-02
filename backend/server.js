@@ -12,7 +12,6 @@ const fs = require("fs");
 const qs = require('querystring');
 const path = require("path");
 const { Console } = require("console");
-const twitchUsernames = {}; // Maps user IDs to usernames
 const userIdToUsername = {};
 const { Sequelize, DataTypes } = require("sequelize");
 const PORT = process.env.PORT || 5000; // default port
@@ -102,75 +101,70 @@ app.options('/twitch/message', cors(corsOptions), (req, res) => {
 });
 
 async function getTwitchOAuthToken() {
-    try {
-        const response = await axios.post(
-            'https://id.twitch.tv/oauth2/token',
-            qs.stringify({
-                client_id: process.env.EXT_CLIENT_ID,
-                client_secret: process.env.EXT_SECRET,
-                grant_type: 'client_credentials'
-            }),
-            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
+  try {
+    console.log("🔑 Requesting Twitch OAuth token...");
+    
+    const response = await axios.post(
+      'https://id.twitch.tv/oauth2/token',
+      qs.stringify({
+        client_id: process.env.EXT_CLIENT_ID,
+        client_secret: process.env.EXT_SECRET,
+        grant_type: 'client_credentials'
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
 
-        console.log("✅ Twitch OAuth Token received:", response.data.access_token);
-        return response.data.access_token;
-    } catch (error) {
-        console.error("❌ Error getting Twitch OAuth token:", error.response?.data || error.message);
-        return null;
-    }
+    console.log("✅ Twitch OAuth Token received successfully");
+    return response.data.access_token;
+  } catch (error) {
+    console.error("❌ Error getting Twitch OAuth token:", error.response?.data || error.message);
+    return null;
+  }
 }
 
-
 // Get usernames for a list of user IDs
-async function getUsernames(userIds) {
-  // Filter out IDs we already have in cache
-  const idsToFetch = userIds.filter(id => !userIdToUsername[id]);
-  
-  if (idsToFetch.length === 0) {
-      return userIdToUsername;
-  }
+async function fetchUsernames(userIds) {
+  if (!userIds || userIds.length === 0) return;
   
   try {
-      // Get OAuth token
-      const token = await getTwitchOAuthToken();
-      if (!token) {
-          console.error('❌ Failed to get Twitch OAuth token');
-          return userIdToUsername;
-      }
+    // Get OAuth token
+    const token = await getTwitchOAuthToken();
+    if (!token) {
+      console.error('❌ Failed to get Twitch OAuth token');
+      return;
+    }
+    
+    // Process in batches of 100 (Twitch API limit)
+    const batchSize = 100;
+    for (let i = 0; i < userIds.length; i += batchSize) {
+      const batch = userIds.slice(i, i + batchSize);
       
-      // Batch user IDs (Twitch API supports up to 100 IDs per request)
-      const batchSize = 100;
-      for (let i = 0; i < idsToFetch.length; i += batchSize) {
-          const batch = idsToFetch.slice(i, i + batchSize);
-          
-          // Build query params
-          const idParams = batch.map(id => `id=${id}`).join('&');
-          
-          // Make API request
-          const response = await axios.get(
-              `https://api.twitch.tv/helix/users?${idParams}`,
-              {
-                  headers: {
-                      'Client-ID': process.env.EXT_CLIENT_ID,
-                      'Authorization': `Bearer ${token}`
-                  }
-              }
-          );
-          
-          // Update cache with response data
-          if (response.data && response.data.data) {
-              response.data.data.forEach(user => {
-                  userIdToUsername[user.id] = user.display_name;
-              });
+      // Build query params
+      const idParams = batch.map(id => `id=${id}`).join('&');
+      
+      // Make API request
+      const response = await axios.get(
+        `https://api.twitch.tv/helix/users?${idParams}`,
+        {
+          headers: {
+            'Client-ID': process.env.EXT_CLIENT_ID,
+            'Authorization': `Bearer ${token}`
           }
-      }
+        }
+      );
       
-      console.log(`✅ Retrieved ${Object.keys(userIdToUsername).length} usernames from Twitch API`);
-      return userIdToUsername;
+      // Update cache with response data
+      if (response.data && response.data.data) {
+        response.data.data.forEach(user => {
+          userIdToUsername[user.id] = user.display_name;
+        });
+      }
+    }
+    
+    console.log(`✅ Retrieved usernames for ${userIds.length} users`);
   } catch (error) {
-      console.error('❌ Error fetching Twitch usernames:', error.response?.data || error.message);
-      return userIdToUsername;
+    console.error('❌ Error fetching Twitch usernames:', error.response?.data || error.message);
+    throw error; // Re-throw to handle in the calling function
   }
 }
 
@@ -198,6 +192,11 @@ const Score = sequelize.define("Score", {
     primaryKey: true,
     comment: "Twitch User ID"
   },
+  username: {  // NEW FIELD!
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Twitch Display Name"
+  },
   score: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -212,7 +211,7 @@ const Score = sequelize.define("Score", {
   }
 }, {
   tableName: "user_scores",
-  timestamps: true, // Enables createdAt and updatedAt
+  timestamps: true,
   updatedAt: "lastUpdated",
   indexes: [
     {
@@ -884,8 +883,9 @@ app.post("/submit-answer", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // Store username when available - STORE DIRECTLY IN userIdToUsername
     if (req.body.username) {
-      twitchUsernames[userId] = req.body.username;
+      userIdToUsername[userId] = req.body.username;
       console.log(`👤 Stored username for ${userId}: ${req.body.username}`);
     }
 
@@ -932,15 +932,16 @@ app.post("/submit-answer", async (req, res) => {
     userSessionScores[userId] += points;
 
     // Persist total score to database
-    let totalScore = 0;
-    try {
-      // Try to find existing score
-      const userScore = await Score.findByPk(userId);
-      
       if (userScore) {
         // Update existing score
         userScore.score = userScore.score + points;
         userScore.lastUpdated = new Date();
+        
+        // Also update username if we have it
+        if (req.body.username) {
+          userScore.username = req.body.username;
+        }
+        
         await userScore.save();
         totalScore = userScore.score;
         console.log(`🏆 Updated DB score for ${userId}: ${totalScore}`);
@@ -948,18 +949,13 @@ app.post("/submit-answer", async (req, res) => {
         // Create new score record
         await Score.create({
           userId: userId,
+          username: req.body.username || null,
           score: points,
           lastUpdated: new Date()
         });
         totalScore = points;
         console.log(`🏆 Created new DB score for ${userId}: ${totalScore}`);
       }
-    } catch (dbError) {
-      // Log error but don't fail the request
-      console.error("❌ Database error when saving score:", dbError);
-      console.log("⚠️ Continuing with in-memory score only");
-      totalScore = usersScores[userId]; // Fallback to memory score
-    }
 
     const sessionScore = userSessionScores[userId];
     console.log(`🏆 User ${userId} earned ${points} points! Total: ${totalScore}, Session: ${sessionScore}`);
@@ -1558,47 +1554,58 @@ app.get("/api/sample-questions", async (req, res) => {
 // New endpoint to get leaderboard data
 app.get("/api/leaderboard", async (req, res) => {
   try {
-      // Get top scores from database
-      const dbScores = await Score.findAll({
-          order: [['score', 'DESC']],
-          limit: 20
-      });
-      
-      // Extract all user IDs
-      const allUserIds = Array.from(new Set([
-          ...dbScores.map(entry => entry.userId),
-          ...Object.keys(userSessionScores)
-      ]));
-      
-      // Try to get usernames for all IDs
-      const usernameMapping = await getUsernames(allUserIds);
-      
-      // Convert to a more usable format with usernames
-      const totalLeaderboard = dbScores.map(entry => {
-          return {
-              userId: entry.userId,
-              username: usernameMapping[entry.userId] || `User-${entry.userId.substring(0, 5)}...`,
-              score: entry.score
-          };
-      });
-      
-      // Sort session scores and get top 20
-      const sessionScores = Object.entries(userSessionScores)
-          .map(([userId, score]) => ({
-              userId,
-              username: usernameMapping[userId] || `User-${userId.substring(0, 5)}...`,
-              score
-          }))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 20);
-      
-      res.json({
-          total: totalLeaderboard,
-          session: sessionScores
-      });
+    // Get top scores from database
+    const dbScores = await Score.findAll({
+      order: [['score', 'DESC']],
+      limit: 20
+    });
+    
+    // Extract all user IDs
+    const allUserIds = Array.from(new Set([
+      ...dbScores.map(entry => entry.userId),
+      ...Object.keys(userSessionScores)
+    ]));
+    
+    // If we have missing usernames, try to fetch them from Twitch API
+    const missingIds = allUserIds.filter(id => !userIdToUsername[id]);
+    
+    if (missingIds.length > 0) {
+      console.log(`🔍 Fetching missing usernames for ${missingIds.length} users`);
+      try {
+        // Try to get usernames from Twitch API
+        await fetchUsernames(missingIds);
+      } catch (error) {
+        console.error("⚠️ Error fetching usernames from API:", error);
+        // Continue with what we have
+      }
+    }
+    
+    // Convert to a more usable format with usernames
+    const totalLeaderboard = dbScores.map(entry => {
+      return {
+        userId: entry.userId,
+        username: userIdToUsername[entry.userId] || `User-${entry.userId.substring(0, 5)}...`,
+        score: entry.score
+      };
+    });
+    
+    // Sort session scores and get top 20
+    const sessionScores = Object.entries(userSessionScores)
+      .map(([userId, score]) => ({
+        userId,
+        username: userIdToUsername[userId] || `User-${userId.substring(0, 5)}...`,
+        score
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
+    
+    res.json({
+      total: totalLeaderboard,
+      session: sessionScores
+    });
   } catch (error) {
-      console.error("❌ Error fetching leaderboard:", error);
-      res.status(500).json({ error: "Failed to fetch leaderboard" });
+    console.error("❌ Error fetching leaderboard:", error);
+    res.status(500).json({ error: "Failed to fetch leaderboard" });
   }
 });
 

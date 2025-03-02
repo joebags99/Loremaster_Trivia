@@ -279,7 +279,7 @@ const TriviaSettings = sequelize.define("TriviaSettings", {
   timestamps: false
 });
 
-// Function to get Twitch OAuth token with better error handling
+// Improved function to get Twitch OAuth token
 async function getTwitchOAuthToken() {
   try {
     console.log("🔑 Requesting Twitch OAuth token...");
@@ -311,11 +311,18 @@ async function getTwitchOAuthToken() {
     return response.data.access_token;
   } catch (error) {
     console.error("❌ Error getting Twitch OAuth token:", error.response?.data || error.message);
+    
+    // Add more detailed error logging
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', JSON.stringify(error.response.data));
+    }
+    
     return null;
   }
 }
 
-// Improved function to fetch usernames
+// Improved function to fetch usernames from Twitch API
 async function fetchUsernames(userIds) {
   if (!userIds || userIds.length === 0) return;
   
@@ -327,25 +334,38 @@ async function fetchUsernames(userIds) {
       return;
     }
     
+    // Filter and clean user IDs
+    const validUserIds = userIds
+      .filter(id => id && typeof id === 'string') // Ensure IDs are strings
+      .map(id => id.trim()) // Trim whitespace
+      .filter(id => /^\d+$/.test(id)); // Only keep numeric IDs (Twitch IDs are numeric)
+    
+    if (validUserIds.length === 0) {
+      console.warn('⚠️ No valid user IDs to fetch');
+      return;
+    }
+    
     // Log the IDs we're trying to fetch
-    console.log(`🔍 Attempting to fetch usernames for IDs:`, userIds.slice(0, 5));
+    console.log(`🔍 Attempting to fetch usernames for ${validUserIds.length} IDs:`, 
+      validUserIds.slice(0, 5).join(', '), validUserIds.length > 5 ? '...' : '');
     
     // Process in batches of 100 (Twitch API limit)
     const batchSize = 100;
     
-    for (let i = 0; i < userIds.length; i += batchSize) {
-      const batch = userIds.slice(i, i + batchSize);
+    for (let i = 0; i < validUserIds.length; i += batchSize) {
+      const batch = validUserIds.slice(i, i + batchSize);
       
-      // This format is required for Helix API
+      // Build query string correctly for Helix API
       const queryParams = new URLSearchParams();
       batch.forEach(id => {
-        // Ensure ID is properly formatted (no special chars, etc)
-        queryParams.append('id', id.trim());
+        queryParams.append('id', id);
       });
       
-      console.log(`🔍 Fetching batch ${Math.floor(i/batchSize) + 1}, first ID: ${batch[0]}`);
+      console.log(`🔍 Fetching batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(validUserIds.length/batchSize)}`);
+      console.log(`🔍 First few IDs in this batch: ${batch.slice(0, 3).join(', ')}${batch.length > 3 ? '...' : ''}`);
       
       try {
+        // Make sure headers are correctly formatted
         const response = await axios.get(
           `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
           {
@@ -363,12 +383,30 @@ async function fetchUsernames(userIds) {
           response.data.data.forEach(user => {
             userIdToUsername[user.id] = user.display_name;
           });
+          
+          // Log a few examples of what we got
+          if (response.data.data.length > 0) {
+            console.log('Sample usernames retrieved:', 
+              response.data.data.slice(0, 3).map(u => `${u.id} -> ${u.display_name}`).join(', '));
+          }
         } else {
           console.log(`⚠️ No users found in batch ${Math.floor(i/batchSize) + 1}`);
         }
       } catch (batchError) {
         console.error(`❌ Error fetching batch ${Math.floor(i/batchSize) + 1}:`, 
           batchError.response?.data || batchError.message);
+          
+        // Log more detailed error information to debug
+        if (batchError.response) {
+          console.error('Status:', batchError.response.status);
+          console.error('Headers:', JSON.stringify(batchError.response.headers));
+          console.error('Data:', JSON.stringify(batchError.response.data));
+          
+          // If there's an issue with the IDs, log them for inspection
+          if (batchError.response.status === 400) {
+            console.error('Problem IDs in this batch:', batch.join(', '));
+          }
+        }
       }
     }
     
@@ -437,12 +475,109 @@ async function initDatabase() {
     // Run database structure debug
     await debugDatabaseStructure();
     
+    // Load existing usernames from the database
+    console.log("🔄 Loading existing usernames from database...");
+    try {
+      const existingScores = await Score.findAll({
+        attributes: ['userId', 'username'],
+        where: {
+          username: {
+            [Sequelize.Op.ne]: null
+          }
+        }
+      });
+      
+      // Store usernames in the global mapping
+      existingScores.forEach(score => {
+        if (score.username) {
+          userIdToUsername[score.userId] = score.username;
+        }
+      });
+      
+      console.log(`✅ Loaded ${existingScores.length} usernames from database`);
+      
+      // Log a few examples
+      if (existingScores.length > 0) {
+        console.log("Sample loaded usernames:", 
+          existingScores.slice(0, 5).map(s => `${s.userId} -> ${s.username}`).join(', '));
+      }
+    } catch (usernameError) {
+      console.error("❌ Error loading existing usernames:", usernameError);
+    }
+    
   } catch (error) {
     console.error("❌ Unable to connect to the database:", error);
     // Don't exit the process - the app can still work without DB
     console.warn("⚠️ Continuing without database persistence. Scores will be lost on server restart.");
   }
 }
+
+// Function to fix user IDs issue with Twitch API
+async function repairUserIds() {
+  try {
+    console.log("🔧 Checking user IDs for potential issues...");
+    
+    // Get all unique user IDs from various sources
+    const scoreIds = Object.keys(usersScores);
+    const sessionIds = Object.keys(userSessionScores);
+    const allIds = [...new Set([...scoreIds, ...sessionIds])];
+    
+    // Check for problematic IDs (non-numeric)
+    const problematicIds = allIds.filter(id => !/^\d+$/.test(id));
+    
+    if (problematicIds.length > 0) {
+      console.warn(`⚠️ Found ${problematicIds.length} problematic (non-numeric) user IDs`);
+      console.warn(`Examples: ${problematicIds.slice(0, 5).join(', ')}${problematicIds.length > 5 ? '...' : ''}`);
+      
+      // For extension IDs that start with "U", try to repair by removing that prefix
+      let repairedCount = 0;
+      
+      problematicIds.forEach(id => {
+        // Common pattern in Twitch extensions: IDs that start with "U" followed by numbers
+        if (id.startsWith('U') && /^U\d+$/.test(id)) {
+          const numericId = id.substring(1); // Remove the 'U'
+          
+          // Transfer any scores or usernames to the numeric ID
+          if (usersScores[id] !== undefined) {
+            if (!usersScores[numericId]) usersScores[numericId] = 0;
+            usersScores[numericId] += usersScores[id];
+            delete usersScores[id];
+          }
+          
+          if (userSessionScores[id] !== undefined) {
+            if (!userSessionScores[numericId]) userSessionScores[numericId] = 0;
+            userSessionScores[numericId] += userSessionScores[id];
+            delete userSessionScores[id];
+          }
+          
+          if (userIdToUsername[id]) {
+            userIdToUsername[numericId] = userIdToUsername[id];
+            delete userIdToUsername[id];
+          }
+          
+          repairedCount++;
+        }
+      });
+      
+      console.log(`🔧 Repaired ${repairedCount} problematic IDs by removing 'U' prefix`);
+    } else {
+      console.log("✅ No problematic user IDs found");
+    }
+    
+  } catch (error) {
+    console.error("❌ Error in repairUserIds:", error);
+  }
+}
+
+// Call this after database initialization
+initDatabase()
+  .then(() => loadInitialQuestions())
+  .then(() => repairUserIds())
+  .catch(error => {
+    console.error("❌ Initialization error:", error);
+  });
+
+
 
 // Helper function to log username stats
 function logUsernameStats() {
@@ -1203,7 +1338,7 @@ app.post("/submit-answer", async (req, res) => {
     }
     
     // Safely extract values with defaults
-    const userId = req.body.userId;
+    const userId = req.body.userId ? String(req.body.userId).trim() : null; // Ensure it's a string
     const selectedAnswer = req.body.selectedAnswer;
     const correctAnswer = req.body.correctAnswer;
     const answerTime = req.body.answerTime;
@@ -1221,10 +1356,11 @@ app.post("/submit-answer", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // Store username when available - STORE DIRECTLY IN userIdToUsername
+    // Store username when available 
     if (req.body.username) {
-      userIdToUsername[userId] = req.body.username;
-      console.log(`👤 Stored username for ${userId}: ${req.body.username}`);
+      const username = String(req.body.username).trim();
+      userIdToUsername[userId] = username;
+      console.log(`👤 Stored username for ${userId}: ${username}`);
     }
 
     // Calculate Score Based on Difficulty and Timing
@@ -1269,7 +1405,13 @@ app.post("/submit-answer", async (req, res) => {
     if (!userSessionScores[userId]) userSessionScores[userId] = 0;
     userSessionScores[userId] += points;
 
-    // Persist total score to database
+    // Get current total score from database or memory
+    let totalScore = usersScores[userId];
+    
+    try {
+      // Attempt to get existing score from database
+      const userScore = await Score.findByPk(userId);
+      
       if (userScore) {
         // Update existing score
         userScore.score = userScore.score + points;
@@ -1294,6 +1436,10 @@ app.post("/submit-answer", async (req, res) => {
         totalScore = points;
         console.log(`🏆 Created new DB score for ${userId}: ${totalScore}`);
       }
+    } catch (dbError) {
+      console.error('❌ Database error in submit-answer:', dbError);
+      // Continue with memory scores
+    }
 
     const sessionScore = userSessionScores[userId];
     console.log(`🏆 User ${userId} earned ${points} points! Total: ${totalScore}, Session: ${sessionScore}`);
@@ -2319,6 +2465,150 @@ app.post("/twitch/message", express.json(), async (req, res) => {
   } catch (error) {
     console.error("❌ Error handling Twitch message:", error);
     res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Debug endpoint to check what IDs are stored
+app.get("/debug/user-ids", (req, res) => {
+  try {
+    // Get all user IDs from the various stores
+    const scoreIds = Object.keys(usersScores);
+    const sessionIds = Object.keys(userSessionScores);
+    const usernameIds = Object.keys(userIdToUsername);
+    
+    // Find sample IDs
+    const allIds = [...new Set([...scoreIds, ...sessionIds, ...usernameIds])];
+    const sampleIds = allIds.slice(0, 10); // First 10 IDs
+    
+    // For each sample ID, show the format and any username
+    const samples = sampleIds.map(id => ({
+      id,
+      format: {
+        raw: id,
+        length: id.length,
+        isNumeric: /^\d+$/.test(id),
+        containsNonAlphaNum: /[^a-zA-Z0-9]/.test(id)
+      },
+      username: userIdToUsername[id] || null,
+      hasScore: id in usersScores,
+      sessionScore: userSessionScores[id] || 0
+    }));
+    
+    res.json({
+      counts: {
+        totalUniqueIds: allIds.length,
+        scoresCount: scoreIds.length,
+        sessionScoresCount: sessionIds.length,
+        usernamesCount: usernameIds.length
+      },
+      samples,
+      usernameSamples: Object.entries(userIdToUsername).slice(0, 10).map(([id, name]) => ({ id, name }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Debug endpoint to test Twitch API with specific IDs
+app.get("/debug/test-twitch-api/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+    
+    console.log(`🧪 Testing Twitch API with user ID: ${userId}`);
+    
+    // First try to get OAuth token
+    const token = await getTwitchOAuthToken();
+    if (!token) {
+      return res.status(500).json({ 
+        error: "Failed to get OAuth token",
+        tip: "Check your EXT_CLIENT_ID and EXT_SECRET environment variables"
+      });
+    }
+    
+    // Build query
+    const queryParams = new URLSearchParams();
+    queryParams.append('id', userId);
+    
+    try {
+      // Make the API call
+      const response = await axios.get(
+        `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
+        {
+          headers: {
+            'Client-ID': process.env.EXT_CLIENT_ID,
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      
+      res.json({
+        success: true,
+        message: "API call successful",
+        userId,
+        result: response.data,
+        tokenInfo: {
+          obtained: true,
+          truncated: token ? `${token.substring(0, 5)}...` : null
+        }
+      });
+    } catch (apiError) {
+      res.status(500).json({
+        error: "API call failed",
+        userId,
+        details: {
+          message: apiError.message,
+          response: apiError.response?.data || null,
+          status: apiError.response?.status || null,
+        },
+        tokenInfo: {
+          obtained: true,
+          truncated: token ? `${token.substring(0, 5)}...` : null
+        },
+        suggestions: [
+          "Ensure the ID is a valid Twitch user ID (numeric)",
+          "Check that your EXT_CLIENT_ID has proper permissions",
+          "Verify your EXT_SECRET is correct"
+        ]
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Debug endpoint to manually set a username
+app.post("/debug/set-username", express.json(), (req, res) => {
+  try {
+    const { userId, username } = req.body;
+    
+    if (!userId || !username) {
+      return res.status(400).json({ error: "Both userId and username are required" });
+    }
+    
+    // Store in memory
+    userIdToUsername[userId] = username;
+    
+    // Also try to update in database
+    Score.findByPk(userId)
+      .then(score => {
+        if (score) {
+          score.username = username;
+          return score.save();
+        }
+      })
+      .catch(err => console.error("Database error updating username:", err));
+    
+    res.json({
+      success: true,
+      message: `Username for ${userId} set to "${username}"`,
+      currentMappings: Object.keys(userIdToUsername).length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -507,7 +507,7 @@ async function fetchUsernames(userIds) {
             }
           }
         );
-        console.log('AAAAAAAAAAAAAAAAAA'+response.data.data)
+        console.log('AAAAAAAAAAAAAAAAAA'+JSON.stringify(response.data.data, null, 4));
         
         if (response.data && response.data.data && response.data.data.length > 0) {
           console.log(`✅ Successfully retrieved ${response.data.data.length} usernames`);

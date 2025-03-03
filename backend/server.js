@@ -507,6 +507,7 @@ async function fetchUsernames(userIds) {
             }
           }
         );
+        console.log('AAAAAAAAAAAAAAAAAA'+response)
         
         if (response.data && response.data.data && response.data.data.length > 0) {
           console.log(`✅ Successfully retrieved ${response.data.data.length} usernames`);
@@ -843,11 +844,11 @@ app.get("/api/leaderboard", async (req, res) => {
     // If we have missing usernames, try to fetch them from Twitch API
     const missingIds = cleanedUserIds.filter(id => !userIdToUsername[id]);
     
-    if (missingIds.length > 0) {
+    if (cleanUserIds.length > 0) {
       console.log(`🔍 Fetching missing usernames for ${missingIds.length} users`);
       try {
         // Try to get usernames from Twitch API
-        await fetchUsernames(missingIds);
+        await fetchUsernames(cleanedUserIds);
       } catch (error) {
         console.error("⚠️ Error fetching usernames from API:", error);
         // Continue with what we have

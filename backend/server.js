@@ -19,6 +19,7 @@ const PORT = process.env.PORT || 5000; // default port
 const EXT_CLIENT_ID = process.env.EXT_CLIENT_ID;
 const EXT_OWNER_ID = process.env.EXT_OWNER_ID;
 const EXT_SECRET = process.env.EXT_SECRET;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const extSecretBuffer = Buffer.from(EXT_SECRET, 'base64');
 
 // Debug environment variables
@@ -30,6 +31,7 @@ console.log(`DB_NAME: ${process.env.DB_NAME ? "DEFINED" : "UNDEFINED"}`);
 console.log(`DB_PASSWORD: ${process.env.DB_PASSWORD ? "DEFINED (length: " + process.env.DB_PASSWORD.length + ")" : "UNDEFINED"}`);
 console.log(`EXT_CLIENT_ID: ${process.env.EXT_CLIENT_ID ? "DEFINED" : "UNDEFINED"}`);
 console.log(`EXT_SECRET: ${process.env.EXT_SECRET ? "DEFINED" : "UNDEFINED"}`);
+console.log(`CLIENT_SECRET: ${process.env.CLIENT_SECRET ? "DEFINED" : "UNDEFINED"}`);
 console.log(`EXT_OWNER_ID: ${process.env.EXT_OWNER_ID ? "DEFINED" : "UNDEFINED"}`);
 console.log("=================================================");
 
@@ -305,16 +307,16 @@ async function getTwitchOAuthToken() {
     console.log("🔑 Requesting Twitch OAuth token...");
     
     // Check if we have required environment variables
-    if (!process.env.EXT_CLIENT_ID || !process.env.EXT_SECRET) {
+    if (!process.env.EXT_CLIENT_ID || !process.env.CLIENT_SECRET) {
       console.error("❌ Missing required environment variables for Twitch OAuth");
-      console.error(`Client ID exists: ${!!process.env.EXT_CLIENT_ID}, Secret exists: ${!!process.env.EXT_SECRET}`);
+      console.error(`Client ID exists: ${!!process.env.EXT_CLIENT_ID}, Client Secret exists: ${!!process.env.CLIENT_SECRET}`);
       return null;
     }
     
     // Create proper form data
     const formData = new URLSearchParams();
     formData.append('client_id', process.env.EXT_CLIENT_ID);
-    formData.append('client_secret', process.env.EXT_SECRET);
+    formData.append('client_secret', process.env.CLIENT_SECRET); // Use CLIENT_SECRET here
     formData.append('grant_type', 'client_credentials');
     
     console.log(`🔍 Using Client ID: ${process.env.EXT_CLIENT_ID.substring(0, 5)}...`);

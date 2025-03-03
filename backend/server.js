@@ -2199,6 +2199,7 @@ app.get("/api/sample-questions", async (req, res) => {
 
 // New endpoint to get leaderboard data
 app.get("/api/leaderboard", async (req, res) => {
+  console.log("AAAAAAA"+req)
   try {
     // Get top scores from database
     const dbScores = await Score.findAll({

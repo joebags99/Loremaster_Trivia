@@ -961,7 +961,7 @@ app.use((req, res, next) => {
 // ✅ Serve frontend files from the correct directory
 const frontendPath = path.join(__dirname, "../frontend");
 app.use(express.static(frontendPath));
-g
+
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "viewer.html"));
   console.log("✅ Serving viewer.html from:", frontendPath);

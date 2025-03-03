@@ -858,7 +858,7 @@ app.get("/api/leaderboard", async (req, res) => {
       const cleanId = cleanUserId(entry.userId);
       return {
         userId: entry.userId,
-        username: entry.username || userIdToUsername[cleanId] || `User-${cleanId.substring(0, 5)}...`,
+        username: userIdToUsername[cleanId] || `User-${cleanId.substring(0, 5)}...`,
         score: entry.score
       };
     });

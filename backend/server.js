@@ -988,7 +988,7 @@ app.get("/overlay", (req, res) => {
 // ✅ Load Environment Variables
 const EXT_CLIENT_ID = process.env.EXT_CLIENT_ID;
 const EXT_OWNER_ID = process.env.EXT_OWNER_ID;
-const CHANNEL_ID = process.env.CHANNEL_ID || "70361469";
+const CHANNEL_ID = process.env.CHANNEL_ID;
 const EXT_SECRET = process.env.EXT_SECRET;
 const extSecretBuffer = Buffer.from(EXT_SECRET, 'base64');
 
@@ -1028,8 +1028,7 @@ function generateToken() {
       channel_id: cleanChannelId,
       pubsub_perms: {
         send: ["broadcast"]
-      },
-      client_id: cleanClientId
+      }
     };
     
     console.log("🔑 Generating JWT with payload:", JSON.stringify(payload));
@@ -1941,69 +1940,6 @@ app.get("/api/categories", async (req, res) => {
   } catch (error) {
     console.error("❌ Error getting categories:", error);
     res.status(500).json({ error: "Failed to get categories", message: error.message });
-  }
-});
-
-// Debug endpoint to test JWT generation
-app.get("/debug/jwt-test", (req, res) => {
-  try {
-    // Get extension info for debugging
-    console.log("✨ DEBUG: Extension credentials");
-    console.log(`Client ID: ${EXT_CLIENT_ID?.substring(0, 5)}...`);
-    console.log(`Owner ID: ${EXT_OWNER_ID}`);
-    console.log(`Channel ID: ${CHANNEL_ID}`);
-    console.log(`Secret length: ${EXT_SECRET?.length || 0}`);
-
-    // Check if secret is properly formatted (should be base64)
-    const isBase64 = /^[A-Za-z0-9+/=]+$/.test(EXT_SECRET);
-    console.log(`Secret appears to be valid base64: ${isBase64}`);
-    
-    // Try to decode the secret with more debugging
-    let decodedSecret;
-    try {
-      // Clean the secret in case there are whitespace issues
-      const cleanSecret = EXT_SECRET.trim();
-      decodedSecret = Buffer.from(cleanSecret, 'base64');
-      console.log(`Secret decoded successfully, length: ${decodedSecret.length} bytes`);
-    } catch (decodeError) {
-      console.error("Failed to decode secret:", decodeError);
-      return res.status(500).json({ error: "Secret decode failed" });
-    }
-    
-    // Generate a JWT token with well-known payload structure
-    const now = Math.floor(Date.now() / 1000);
-    const payload = {
-      exp: now + 300,
-      iat: now,
-      user_id: EXT_OWNER_ID,
-      role: "external",
-      channel_id: CHANNEL_ID,
-      pubsub_perms: {
-        send: ["broadcast"]
-      },
-      client_id: EXT_CLIENT_ID
-    };
-    
-    const token = jwt.sign(payload, decodedSecret, { algorithm: "HS256" });
-    console.log(`Generated test token: ${token.substring(0, 20)}...`);
-    
-    // Try to decode the token to verify it's valid
-    const decoded = jwt.verify(token, decodedSecret, { algorithms: ['HS256'] });
-    
-    // If we got here, token verification succeeded
-    res.json({
-      success: true,
-      token_preview: token.substring(0, 50) + "...",
-      payload: payload,
-      decoded: decoded
-    });
-  } catch (error) {
-    console.error("❌ JWT test error:", error);
-    res.status(500).json({ 
-      error: error.message, 
-      type: error.name,
-      stack: error.stack
-    });
   }
 });
 

@@ -623,6 +623,7 @@ initDatabase().catch(error => {
 });
 
 // Add username capture endpoint
+// Merged username capture endpoint with ID cleaning
 app.post("/api/set-username", express.json(), (req, res) => {
   try {
     const { userId, username } = req.body;
@@ -634,17 +635,39 @@ app.post("/api/set-username", express.json(), (req, res) => {
       });
     }
     
-    // Store username in memory
-    userIdToUsername[userId] = username;
+    // Clean the user ID and store original
+    const originalId = userId;
+    const cleanId = cleanUserId(userId);
+    
+    // Store username in memory for both original and cleaned IDs
+    userIdToUsername[originalId] = username;
+    if (originalId !== cleanId) {
+      userIdToUsername[cleanId] = username;
+      console.log(`👤 Storing username mapping for both formats: ${originalId} and ${cleanId}`);
+    }
+    
     console.log(`👤 Manually set username for ${userId}: ${username}`);
     
-    // Try to update in database
-    Score.findByPk(userId).then(userScore => {
-      if (userScore) {
-        userScore.username = username;
-        return userScore.save();
-      }
-    }).catch(err => {
+    // Try to update in database (check both ID formats)
+    Promise.all([
+      // Check if record exists with original ID
+      Score.findByPk(originalId).then(userScore => {
+        if (userScore) {
+          userScore.username = username;
+          return userScore.save();
+        }
+      }),
+      
+      // Check if record exists with cleaned ID (if different)
+      originalId !== cleanId ? 
+        Score.findByPk(cleanId).then(userScore => {
+          if (userScore) {
+            userScore.username = username;
+            return userScore.save();
+          }
+        }) : Promise.resolve()
+    ])
+    .catch(err => {
       console.error("❌ Error updating username in database:", err);
     });
     
@@ -652,7 +675,9 @@ app.post("/api/set-username", express.json(), (req, res) => {
     res.json({ 
       success: true, 
       message: "Username set successfully",
-      currentMappings: Object.keys(userIdToUsername).length
+      currentMappings: Object.keys(userIdToUsername).length,
+      originalId,
+      cleanId
     });
     
   } catch (error) {
@@ -2238,47 +2263,6 @@ app.post("/api/add-username", express.json(), (req, res) => {
   
   twitchUsernames[userId] = username;
   res.json({ success: true, message: `Username ${username} added for ${userId}` });
-});
-
-app.post("/api/set-username", express.json(), (req, res) => {
-  try {
-    const { userId, username } = req.body;
-    
-    if (!userId || !username) {
-      return res.status(400).json({ 
-        success: false,
-        error: "Missing userId or username" 
-      });
-    }
-    
-    // Store username in memory
-    userIdToUsername[userId] = username;
-    console.log(`👤 Manually set username for ${userId}: ${username}`);
-    
-    // Try to update in database
-    Score.findByPk(userId).then(userScore => {
-      if (userScore) {
-        userScore.username = username;
-        return userScore.save();
-      }
-    }).catch(err => {
-      console.error("❌ Error updating username in database:", err);
-    });
-    
-    // Return success
-    res.json({ 
-      success: true, 
-      message: "Username set successfully",
-      currentMappings: Object.keys(userIdToUsername).length
-    });
-    
-  } catch (error) {
-    console.error("❌ Error setting username:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "Server error" 
-    });
-  }
 });
 
 // ✅ Handle Twitch extension message handler

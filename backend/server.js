@@ -136,17 +136,121 @@ const corsOptions = {
   maxAge: 86400 // 24 hours
 };
 
+// Single consistent function for cleaning user IDs
 function cleanUserId(userId) {
   if (!userId) return userId;
+  
   // Convert to string if not already
   userId = String(userId);
   
-  // Twitch channel IDs are numeric - remove any non-numeric prefix
+  // Twitch IDs should be numeric - remove any non-numeric prefix
   if (userId.startsWith('U') && /^U\d+$/.test(userId)) {
-    return userId.substring(1); // Remove the 'U'
+    return userId.substring(1);
   }
   
   return userId;
+}
+
+// Single in-memory cache for usernames
+const usernameCache = new Map();
+
+// Simplified function to fetch usernames from Twitch API
+async function fetchUsernames(userIds) {
+  if (!userIds || userIds.length === 0) return;
+  
+  try {
+    // Get token only once
+    const token = await getTwitchOAuthToken();
+    if (!token) {
+      console.error('❌ Failed to get Twitch OAuth token');
+      return;
+    }
+    
+    // Clean all IDs consistently
+    const cleanedIds = userIds.map(cleanUserId).filter(id => id && /^\d+$/.test(id));
+    
+    if (cleanedIds.length === 0) {
+      console.warn('⚠️ No valid user IDs to fetch');
+      return;
+    }
+    
+    // Process in batches (Twitch API limit is 100)
+    const batchSize = 100;
+    
+    for (let i = 0; i < cleanedIds.length; i += batchSize) {
+      const batch = cleanedIds.slice(i, i + batchSize);
+      
+      // Build query string
+      const queryParams = new URLSearchParams();
+      batch.forEach(id => queryParams.append('id', id));
+      
+      try {
+        const response = await axios.get(
+          `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
+          {
+            headers: {
+              'Client-ID': process.env.EXT_CLIENT_ID,
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (response.data && response.data.data && response.data.data.length > 0) {
+          // Store usernames in the cache with both original and cleaned IDs
+          response.data.data.forEach(user => {
+            if (user.id && user.display_name) {
+              usernameCache.set(user.id, user.display_name);
+              
+              // Also store in database asynchronously
+              updateUsernameInDatabase(user.id, user.display_name)
+                .catch(err => console.error(`Failed to update username in DB: ${err.message}`));
+            }
+          });
+        }
+      } catch (error) {
+        console.error(`❌ Error fetching usernames batch: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    console.error(`❌ Error in fetchUsernames: ${error.message}`);
+  }
+}
+
+// Simple function to update username in database
+async function updateUsernameInDatabase(userId, username) {
+  try {
+    const userScore = await Score.findByPk(userId);
+    
+    if (userScore) {
+      // Update existing record
+      userScore.username = username;
+      await userScore.save();
+    } else {
+      // If we have no score record, don't create one just for the username
+      // We'll only store usernames for users who have scores
+    }
+  } catch (error) {
+    console.error(`Failed to update username in database: ${error.message}`);
+  }
+}
+
+// Simplified function to get username for a user ID
+function getUsername(userId) {
+  if (!userId) return null;
+  
+  // First try original ID
+  if (usernameCache.has(userId)) {
+    return usernameCache.get(userId);
+  }
+  
+  // Then try cleaned ID
+  const cleanedId = cleanUserId(userId);
+  if (usernameCache.has(cleanedId)) {
+    return usernameCache.get(cleanedId);
+  }
+  
+  // Return a placeholder if not found
+  return `User-${cleanedId.substring(0, 5)}...`;
 }
 
 // Initialize Express app
@@ -829,66 +933,36 @@ app.get("/api/leaderboard", async (req, res) => {
       limit: 20
     });
     
-    // Extract all user IDs
+    // Extract all unique user IDs we need usernames for
     const allUserIds = Array.from(new Set([
       ...dbScores.map(entry => entry.userId),
       ...Object.keys(userSessionScores)
     ]));
     
-    // MODIFY: Clean all user IDs before processing
-    const cleanedUserIds = allUserIds.map(id => cleanUserId(id));
+    // Try to fetch any missing usernames from Twitch API
+    const missingIds = allUserIds.filter(id => 
+      !usernameCache.has(id) && !usernameCache.has(cleanUserId(id)));
     
-    // If we have missing usernames, try to fetch them from Twitch API
-    const missingIds = cleanedUserIds.filter(id => !userIdToUsername[id]);
-    
-    if (cleanedUserIds.length > 0) {
-      console.log(`🔍 Fetching missing usernames for ${missingIds.length} users`);
-      try {
-        // Try to get usernames from Twitch API
-        await fetchUsernames(cleanedUserIds);
-      } catch (error) {
-        console.error("⚠️ Error fetching usernames from API:", error);
-        // Continue with what we have
-      }
+    if (missingIds.length > 0) {
+      await fetchUsernames(missingIds);
     }
     
-    // Convert to a more usable format with usernames
-    const totalLeaderboard = dbScores.map(entry => {
-      // MODIFY: Clean the user ID before looking up username
-      const cleanId = cleanUserId(entry.userId);
-      return {
-        userId: entry.userId,
-        username: userIdToUsername[cleanId] || `User-${cleanId.substring(0, 5)}...`,
-        score: entry.score
-      };
-    });
+    // Create total leaderboard with usernames
+    const totalLeaderboard = dbScores.map(entry => ({
+      userId: entry.userId,
+      username: getUsername(entry.userId),
+      score: entry.score
+    }));
     
-    // Sort session scores and get top 20
+    // Create session leaderboard with usernames
     const sessionScores = Object.entries(userSessionScores)
-    .map(([userId, score]) => {
-      // Clean the user ID for username lookup
-      const cleanId = cleanUserId(userId);
-      
-      // Try both the original and cleaned ID for username lookup
-      const username = userIdToUsername[userId] || userIdToUsername[cleanId] || `User-${userId.substring(0, 5)}...`;
-      
-      return {
+      .map(([userId, score]) => ({
         userId,
-        username,
+        username: getUsername(userId),
         score
-      };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 20);
-    
-    // Log the first few entries to debug
-    if (totalLeaderboard.length > 0) {
-      console.log("🏆 Total leaderboard sample:", totalLeaderboard.slice(0, 3));
-    }
-    
-    if (sessionScores.length > 0) {
-      console.log("🏆 Session leaderboard sample:", sessionScores.slice(0, 3));
-    }
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
     
     res.json({
       total: totalLeaderboard,
@@ -1494,135 +1568,106 @@ app.post("/upload-csv", upload.single("file"), (req, res) => {
   }
 });
 
-// ✅ Handle User Answer Submission with Improved Scoring System and Error Handling
+// Improved /submit-answer endpoint with cleaner username handling
 app.post("/submit-answer", async (req, res) => {
-  console.log("📤 Received answer submission:", req.body);
-  
   try {
-    // Handle empty or undefined body
+    // 1. Input validation with early returns for invalid data
     if (!req.body || Object.keys(req.body).length === 0) {
-      console.error("❌ Empty request body on submit-answer endpoint");
       return res.status(400).json({ error: "Empty request body" });
     }
     
-    // Safely extract values with defaults
-    const userId = req.body.userId ? String(req.body.userId).trim() : null; // Ensure it's a string
-    const selectedAnswer = req.body.selectedAnswer;
-    const correctAnswer = req.body.correctAnswer;
-    const answerTime = req.body.answerTime;
-    const difficulty = req.body.difficulty || 'Medium';
-    const duration = req.body.duration || triviaSettings.answerTime || 30000;
-
+    const { userId: rawUserId, selectedAnswer, correctAnswer, answerTime, 
+            difficulty = 'Medium', duration = triviaSettings.answerTime || 30000, 
+            username } = req.body;
+    
+    // Ensure userId is a clean string
+    const userId = rawUserId ? String(rawUserId).trim() : null;
+    const cleanedUserId = cleanUserId(userId);
+    
     // Validate required fields
     if (!userId || !selectedAnswer || !correctAnswer || answerTime === undefined) {
-      console.error("❌ Missing required fields:", { 
-        userId: !!userId, 
-        selectedAnswer: !!selectedAnswer, 
-        correctAnswer: !!correctAnswer, 
-        answerTime: answerTime !== undefined 
-      });
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    // Store username when available 
-    if (req.body.username) {
-      const username = String(req.body.username).trim();
-      userIdToUsername[userId] = username;
-      console.log(`👤 Stored username for ${userId}: ${username}`);
-    }
-
-    // Calculate Score Based on Difficulty and Timing
-    let basePoints = 0;
-    
-    // Set base points based on difficulty
-    switch(difficulty) {
-      case 'Easy':
-        basePoints = 500;
-        break;
-      case 'Hard':
-        basePoints = 1500;
-        break;
-      case 'Medium':
-      default:
-        basePoints = 1000;
-        break;
-    }
-
-    let points = 0;
-    
-    if (selectedAnswer === correctAnswer) {
-      // Calculate percentage of time elapsed (0 to 1)
-      const timePercentage = Math.min(1, answerTime / duration);
-      
-      // Calculate points reduction (1% per 1% of time)
-      const pointsPercentage = Math.max(0.1, 1 - timePercentage); // Minimum 10%
-      
-      // Final points - round to nearest integer
-      points = Math.round(basePoints * pointsPercentage);
-
-      console.log(`🎯 Scoring: Difficulty=${difficulty}, Base=${basePoints}, Time=${answerTime}/${duration}, Percentage=${Math.round(pointsPercentage * 100)}%, Final=${points}`);
-    } else {
-      console.log(`❌ Incorrect answer: ${selectedAnswer} (correct: ${correctAnswer})`);
-    }
-
-    // Track total score in memory (for backup)
-    if (!usersScores[userId]) usersScores[userId] = 0;
-    usersScores[userId] += points;
-    
-    // Track session score separately
-    if (!userSessionScores[userId]) userSessionScores[userId] = 0;
-    userSessionScores[userId] += points;
-
-    // Get current total score from database or memory
-    let totalScore = usersScores[userId];
-    
-    try {
-      // Attempt to get existing score from database
-      const userScore = await Score.findByPk(userId);
-      
-      if (userScore) {
-        // Update existing score
-        userScore.score = userScore.score + points;
-        userScore.lastUpdated = new Date();
-        
-        // Also update username if we have it
-        if (req.body.username) {
-          userScore.username = req.body.username;
+      return res.status(400).json({ 
+        error: "Missing required fields",
+        missing: {
+          userId: !userId,
+          selectedAnswer: !selectedAnswer,
+          correctAnswer: !correctAnswer,
+          answerTime: answerTime === undefined
         }
-        
-        await userScore.save();
-        totalScore = userScore.score;
-        console.log(`🏆 Updated DB score for ${userId}: ${totalScore}`);
-      } else {
-        // Create new score record
-        await Score.create({
-          userId: userId,
-          username: req.body.username || null,
-          score: points,
-          lastUpdated: new Date()
-        });
-        totalScore = points;
-        console.log(`🏆 Created new DB score for ${userId}: ${totalScore}`);
-      }
-    } catch (dbError) {
-      console.error('❌ Database error in submit-answer:', dbError);
-      // Continue with memory scores
+      });
     }
 
-    const sessionScore = userSessionScores[userId];
-    console.log(`🏆 User ${userId} earned ${points} points! Total: ${totalScore}, Session: ${sessionScore}`);
+    // 2. Username handling - consistently store in memory and database
+    if (username) {
+      // Store username in memory for both original and cleaned ID
+      userIdToUsername[userId] = username;
+      userIdToUsername[cleanedUserId] = username;
+    }
+
+    // 3. Simplified scoring logic
+    // Calculate base points based on difficulty
+    const basePoints = difficulty === 'Easy' ? 500 : 
+                       difficulty === 'Medium' ? 1000 :
+                       difficulty === 'Hard' ? 1500 :
     
+    // Calculate final points
+    let ,points = 0;
+    if (selectedAnswer === correctAnswer) {
+      // Calculate time bonus percentage (0.1 to 1.0)
+      const timePercentage = Math.min(1, answerTime / duration);
+      const timeBonus = Math.max(0.1, 1 - timePercentage); // At least 10%
+      
+      // Apply time bonus to base points
+      points = Math.round(basePoints * timeBonus);
+      
+      console.log(`✅ Correct answer! Difficulty: ${difficulty}, Time: ${answerTime}/${duration}ms, Bonus: ${Math.round(timeBonus * 100)}%, Points: ${points}`);
+    } else {
+      console.log(`❌ Incorrect answer from ${userId}: ${selectedAnswer} (correct was: ${correctAnswer})`);
+    }
+
+    // 4. Score tracking with consistent ID handling
+    // Update memory scores
+    if (!usersScores[cleanedUserId]) usersScores[cleanedUserId] = 0;
+    usersScores[cleanedUserId] += points;
+    
+    if (!userSessionScores[cleanedUserId]) userSessionScores[cleanedUserId] = 0;
+    userSessionScores[cleanedUserId] += points;
+    
+    // Track totals for response
+    const totalScore = usersScores[cleanedUserId];
+    const sessionScore = userSessionScores[cleanedUserId];
+
+    // 5. Database operations
+    try {
+      // Use upsert for more efficient database operation
+      await Score.upsert({
+        userId: cleanedUserId,
+        username: username || undefined, // Only update if provided
+        score: Sequelize.literal(`COALESCE(score, 0) + ${points}`),
+        lastUpdated: new Date()
+      }, {
+        where: { userId: cleanedUserId }
+      });
+      
+      console.log(`🏆 Database updated for ${cleanedUserId}: +${points} points`);
+    } catch (dbError) {
+      console.error('❌ Database error:', dbError.message);
+      // Continue with memory scores only
+    }
+
+    // 6. Send success response
     res.json({ 
       success: true, 
-      pointsEarned: points, 
-      totalScore: totalScore,
-      sessionScore: sessionScore,
+      pointsEarned: points,
+      totalScore,
+      sessionScore,
       basePoints,
-      difficulty: difficulty,
+      difficulty,
       timePercentage: Math.round((1 - Math.min(1, answerTime / duration)) * 100)
     });
+    
   } catch (error) {
-    console.error("❌ Error submitting answer:", error);
+    console.error("❌ Error in submit-answer:", error);
     res.status(500).json({ error: "Server error" });
   }
 });

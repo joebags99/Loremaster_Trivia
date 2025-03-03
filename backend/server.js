@@ -1077,7 +1077,7 @@ async function broadcastToTwitch(channelId, message) {
     }
     
     // Generate token specifically for this channel
-    const token = generateToken();
+    const token = generateToken(channelId);
     
     if (!token) {
       console.error("❌ Failed to generate valid JWT token");

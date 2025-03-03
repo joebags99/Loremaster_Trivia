@@ -961,7 +961,7 @@ app.use((req, res, next) => {
 // ✅ Serve frontend files from the correct directory
 const frontendPath = path.join(__dirname, "../frontend");
 app.use(express.static(frontendPath));
-
+g
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "viewer.html"));
   console.log("✅ Serving viewer.html from:", frontendPath);
@@ -988,7 +988,6 @@ app.get("/overlay", (req, res) => {
 // ✅ Load Environment Variables
 const EXT_CLIENT_ID = process.env.EXT_CLIENT_ID;
 const EXT_OWNER_ID = process.env.EXT_OWNER_ID;
-const CHANNEL_ID = process.env.CHANNEL_ID;
 const EXT_SECRET = process.env.EXT_SECRET;
 const extSecretBuffer = Buffer.from(EXT_SECRET, 'base64');
 
@@ -999,7 +998,6 @@ if (!EXT_CLIENT_ID || !EXT_OWNER_ID || !EXT_SECRET) {
 
 console.log("✅ Using Extension Client ID:", EXT_CLIENT_ID);
 console.log("✅ Using Extension Owner ID:", EXT_OWNER_ID);
-console.log("✅ Target Channel ID:", CHANNEL_ID);
 
 // Improved JWT token generation for Twitch PubSub authentication
 function generateToken(specificChannelId = null) {
@@ -1010,8 +1008,7 @@ function generateToken(specificChannelId = null) {
       return null;
     }
     
-    // Use provided channelId or fall back to default CHANNEL_ID
-    const channelId = specificChannelId || CHANNEL_ID;
+    const channelId = specificChannelId || EXT_OWNER_ID;
     
     if (!channelId) {
       console.error("❌ No valid channel ID available for JWT generation");
@@ -1019,6 +1016,7 @@ function generateToken(specificChannelId = null) {
     }
     
     // Ensure IDs are properly formatted
+    console.log("EXT_OWNER_ID:", EXT_OWNER_ID);
     const cleanOwnerId = String(EXT_OWNER_ID).trim();
     const cleanChannelId = String(channelId).trim();
     
@@ -1066,8 +1064,8 @@ async function broadcastToTwitch(channelId, message) {
     // Add defensive check for channelId
     if (!channelId) {
       console.error("❌ Missing channelId in broadcastToTwitch - using default");
-      // Fall back to your default CHANNEL_ID
-      channelId = CHANNEL_ID;
+      // Fall back to your default EXT_OWNER_ID
+      channelId = EXT_OWNER_ID;
       
       // If still undefined, fail early
       if (!channelId) {
@@ -1212,7 +1210,7 @@ app.post("/start-trivia", async (req, res) => {
       const token = generateToken();
       const startPayload = {
           target: ["broadcast"],
-          broadcaster_id: CHANNEL_ID.toString(),
+          broadcaster_id: EXT_OWNER_ID.toString(),
           is_global_broadcast: false,
           message: JSON.stringify({ 
               type: "TRIVIA_START",
@@ -1593,7 +1591,7 @@ app.post("/reset-session-scores", (req, res) => {
 app.post("/send-test", async (req, res) => {
   console.log("🚀 Received request to send a trivia question.");
   try {
-    await sendTriviaQuestion(CHANNEL_ID);
+    await sendTriviaQuestion(EXT_OWNER_ID);
     console.log("✅ Trivia question sent via /send-test");
     res.json({ success: true, message: "Trivia question sent!" });
   } catch (error) {
@@ -1605,7 +1603,7 @@ app.post("/send-test", async (req, res) => {
 // ✅ GET endpoint for testing trivia
 app.get("/trivia", async (req, res) => {
   try {
-    await sendTriviaQuestion(CHANNEL_ID);
+    await sendTriviaQuestion(EXT_OWNER_ID);
     res.json({ success: true, message: "Trivia question sent via GET /trivia" });
   } catch (error) {
     console.error("❌ Error in GET /trivia:", error);
@@ -1631,7 +1629,7 @@ async function sendCountdownUpdate() {
       const token = generateToken();
       const countdownPayload = {
           target: ["broadcast"],
-          broadcaster_id: CHANNEL_ID.toString(),
+          broadcaster_id: EXT_OWNER_ID.toString(),
           is_global_broadcast: false,
           message: JSON.stringify({
               type: "COUNTDOWN_UPDATE",
@@ -1708,7 +1706,7 @@ function sendSettingsUpdate() {
 
   const settingsPayload = {
     target: ["broadcast"],
-    broadcaster_id: CHANNEL_ID.toString(),
+    broadcaster_id: EXT_OWNER_ID.toString(),
     is_global_broadcast: false,
     message: JSON.stringify({
       type: "SETTINGS_UPDATE",
@@ -1804,7 +1802,7 @@ app.post("/end-trivia", (req, res) => {
   const token = generateToken();
   const endPayload = {
       target: ["broadcast"],
-      broadcaster_id: CHANNEL_ID.toString(),
+      broadcaster_id: EXT_OWNER_ID.toString(),
       is_global_broadcast: false,
       message: JSON.stringify({ type: "TRIVIA_END" }),
   };
@@ -1847,7 +1845,7 @@ setInterval(() => {
   // ✅ When time runs out, request the next question
   if (timeRemaining <= 0 && !questionInProgress) {
       console.log("⏳ Countdown reached 0! Sending trivia question...");
-      sendTriviaQuestion(CHANNEL_ID);
+      sendTriviaQuestion(EXT_OWNER_ID);
   }
 }, 1000); // ✅ Runs once per second
 
@@ -1877,7 +1875,7 @@ app.get("/get-next-question", async (req, res) => {
     console.log("🧠 Getting next question from database...");
     
     // Get broadcaster filters
-    const filters = await getBroadcasterFilters(CHANNEL_ID);
+    const filters = await getBroadcasterFilters(EXT_OWNER_ID);
     
     // Get random question from database
     let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);

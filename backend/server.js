@@ -507,7 +507,7 @@ async function fetchUsernames(userIds) {
             }
           }
         );
-        console.log('AAAAAAAAAAAAAAAAAA'+response)
+        console.log('AAAAAAAAAAAAAAAAAA'+response.data.data)
         
         if (response.data && response.data.data && response.data.data.length > 0) {
           console.log(`✅ Successfully retrieved ${response.data.data.length} usernames`);
@@ -515,9 +515,6 @@ async function fetchUsernames(userIds) {
           // Update cache with response data
           response.data.data.forEach(user => {
             userIdToUsername[user.id] = user.display_name;
-            
-            // Also store with 'U' prefix to handle both formats
-            userIdToUsername['U' + user.id] = user.display_name;
           });
           
           // Log a few examples of what we got

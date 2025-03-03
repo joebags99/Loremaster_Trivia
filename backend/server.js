@@ -1002,7 +1002,7 @@ console.log("✅ Using Extension Owner ID:", EXT_OWNER_ID);
 console.log("✅ Target Channel ID:", CHANNEL_ID);
 
 // Improved JWT token generation for Twitch PubSub authentication
-function generateToken() {
+function generateToken(specificChannelId = null) {
   try {
     // Clean and validate the secret
     if (!EXT_SECRET || EXT_SECRET.length < 10) {
@@ -1010,16 +1010,25 @@ function generateToken() {
       return null;
     }
     
+    // Use provided channelId or fall back to default CHANNEL_ID
+    const channelId = specificChannelId || CHANNEL_ID;
+    
+    if (!channelId) {
+      console.error("❌ No valid channel ID available for JWT generation");
+      return null;
+    }
+    
     // Ensure IDs are properly formatted
     const cleanOwnerId = String(EXT_OWNER_ID).trim();
-    const cleanChannelId = String(CHANNEL_ID).trim();
-    const cleanClientId = String(EXT_CLIENT_ID).trim();
+    const cleanChannelId = String(channelId).trim();
     
-    console.log(`🔍 Using clean IDs for JWT: Owner=${cleanOwnerId}, Channel=${cleanChannelId}, Client=${cleanClientId.substring(0, 5)}...`);
+    // Log IDs being used (without logging full client ID for security)
+    console.log(`🔍 Using clean IDs for JWT: Owner=${cleanOwnerId}, Channel=${cleanChannelId}`);
     
     const now = Math.floor(Date.now() / 1000);
     
     // Create payload with proper order and formatting
+    // Note: client_id removed from payload as per Twitch requirements
     const payload = {
       exp: now + 300,
       iat: now,
@@ -1054,6 +1063,20 @@ function generateToken() {
 // ✅ Helper: Broadcast to Twitch PubSub
 async function broadcastToTwitch(channelId, message) {
   try {
+    // Add defensive check for channelId
+    if (!channelId) {
+      console.error("❌ Missing channelId in broadcastToTwitch - using default");
+      // Fall back to your default CHANNEL_ID
+      channelId = CHANNEL_ID;
+      
+      // If still undefined, fail early
+      if (!channelId) {
+        console.error("❌ No valid channel ID available");
+        return false;
+      }
+    }
+    
+    // Generate token specifically for this channel
     const token = generateToken();
     
     if (!token) {

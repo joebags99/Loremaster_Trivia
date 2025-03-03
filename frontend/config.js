@@ -329,7 +329,7 @@ function fetchLeaderboardData() {
     
     console.log("🔍 Fetching leaderboard data...");
     
-    fetch('/api/leaderboard')
+    fetch(`${getApiBaseUrl()}/api/leaderboard`)
       .then(response => {
         console.log("🔍 Leaderboard response status:", response.status);
         if (!response.ok) {

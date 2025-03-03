@@ -13,6 +13,12 @@ let triviaSettings = {
 let currentQuestionDifficulty = null; // Stores current question difficulty
 let currentQuestionDuration = null;   // Stores current question duration
 
+function getApiBaseUrl() {
+    return window.location.hostname.includes('ext-twitch.tv')
+        ? 'https://loremaster-trivia.com'
+        : '';
+}
+
 // Retrieve Twitch User ID on authorization and fetch user score
 window.Twitch.ext.onAuthorized((auth) => {
     console.log("✅ Extension authorized");
@@ -141,8 +147,8 @@ function fetchUserScore(userId) {
     
     console.log(`📊 Fetching score for user: ${userId}`);
     
-    fetch(`/score/${userId}`)
-        .then(response => {
+    fetch(`${getApiBaseUrl()}/score/${userId}`)
+    .then(response => {
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
             }
@@ -192,45 +198,45 @@ function sendTwitchIdentity() {
 
   function sendUsername() {
     if (!userId) {
-      console.warn("⚠️ Cannot send username: User ID is missing");
-      return;
+        console.warn("⚠️ Cannot send username: User ID is missing");
+        return;
     }
-    
+
     // Get displayName from Twitch Extension
     let username = null;
-    
+
     // Try different methods to get the username
     if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.displayName) {
-      username = window.Twitch.ext.viewer.displayName;
+        username = window.Twitch.ext.viewer.displayName;
     } else if (twitchUsername) {
-      username = twitchUsername;
+        username = twitchUsername;
     }
-    
+
     if (!username) {
-      console.warn("⚠️ No username available to send");
-      return;
+        console.warn("⚠️ No username available to send");
+        return;
     }
-    
+
     console.log(`👤 Sending username to server: ${username} for user ID: ${userId}`);
-    
-    fetch("/api/set-username", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        userId: userId,
-        username: username
-      })
+
+    fetch(`${getApiBaseUrl()}/api/set-username`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            userId: userId,
+            username: username
+        })
     })
     .then(response => response.json())
     .then(data => {
-      console.log("✅ Username sent successfully:", data);
+        console.log("✅ Username sent successfully:", data);
     })
     .catch(error => {
-      console.error("❌ Error sending username:", error);
+        console.error("❌ Error sending username:", error);
     });
-  }
+}
 
 // ✅ Improved countdown update function
 function updateCountdown(timeRemaining) {
@@ -267,7 +273,7 @@ setInterval(() => {
         console.log("⏳ Countdown reached 0! Requesting next question...");
         questionRequested = true;
         
-        fetch("/get-next-question")
+        fetch(`${getApiBaseUrl()}/get-next-question`)
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
@@ -467,8 +473,8 @@ function displayScores(totalScore, sessionScore) {
 // Update selectAnswer function to handle both scores and better error handling
 function selectAnswer(button, selectedChoice, correctAnswer) {
     if (!userId) {
-      console.warn("⚠ User ID missing. Cannot track score.");
-      return;
+        console.warn("⚠ User ID missing. Cannot track score.");
+        return;
     }
     
     // Try to send username if we have it but haven't sent it yet
@@ -504,7 +510,7 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
     console.log("📤 Submitting answer data:", answerData);
 
     // Submit answer to server
-    fetch("/submit-answer", {
+    fetch(`${getApiBaseUrl()}/submit-answer`, {
         method: "POST",
         headers: { 
             "Content-Type": "application/json"

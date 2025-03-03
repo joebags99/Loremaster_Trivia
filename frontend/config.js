@@ -19,6 +19,12 @@ let triviaSettings = {
     intervalTime: 600000   // Default 10 minutes
 };
 
+function getApiBaseUrl() {
+    return window.location.hostname.includes('ext-twitch.tv')
+        ? 'https://loremaster-trivia.com'
+        : '';
+}
+
 // ====== INITIALIZATION FUNCTIONS ======
 
 // Main initialization function
@@ -133,17 +139,10 @@ function createMockTwitchForTesting() {
 
 // ====== DATA LOADING FUNCTIONS ======
 
-// Load categories directly from API endpoint
 function loadCategoriesDirectAPI() {
     console.log("🔍 Loading categories via direct API");
     
-    // Determine API base URL - use absolute URL when on Twitch
-    const baseUrl = window.location.hostname.includes('ext-twitch.tv')
-        ? 'https://loremaster-trivia.com/'
-        : '';
-    
-    // Use the constructed URL for the API call
-    fetch(`${baseUrl}/api/categories`)
+    fetch(`${getApiBaseUrl()}/api/categories`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -152,16 +151,11 @@ function loadCategoriesDirectAPI() {
         })
         .then(data => {
             console.log("🔄 Categories received from direct API:", data);
-            
-            // Store categories in global state
             window.trivia.categories = data.categories || [];
-            
-            // Render categories
             renderCategories();
         })
         .catch(error => {
             console.error("❌ Error loading categories via direct API:", error);
-            
             // Fall back to Twitch messaging approach
             console.log("🔄 Trying Twitch messaging for categories");
             window.Twitch.ext.send('broadcast', 'application/json', {
@@ -169,12 +163,11 @@ function loadCategoriesDirectAPI() {
             });
         });
 }
-
 // Load difficulties directly from API endpoint
 function loadDifficultiesDirectAPI() {
     console.log("🔍 Loading difficulties via direct API");
     
-    fetch('/api/difficulties')
+    fetch(`${getApiBaseUrl()}/api/difficulties`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -183,18 +176,12 @@ function loadDifficultiesDirectAPI() {
         })
         .then(data => {
             console.log("🔄 Difficulties received from direct API:", data);
-            
-            // Store difficulties in global state
             window.trivia.difficulties = data.difficulties || [];
-            
-            // Render difficulties
             renderDifficulties();
         })
         .catch(error => {
             console.error("❌ Error loading difficulties via direct API:", error);
-            
             // Fall back to Twitch messaging approach
-            console.log("🔄 Trying Twitch messaging for difficulties");
             window.Twitch.ext.send('broadcast', 'application/json', {
                 type: 'GET_DIFFICULTIES'
             });
@@ -210,7 +197,7 @@ function fetchBroadcasterSettings() {
     
     console.log(`🔍 Fetching broadcaster settings for ID: ${window.broadcasterId}`);
     
-    fetch(`/api/settings/${window.broadcasterId}`)
+    fetch(`${getApiBaseUrl()}/api/settings/${window.broadcasterId}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -223,12 +210,8 @@ function fetchBroadcasterSettings() {
             if (data.settings) {
                 window.trivia.selectedCategories = data.settings.active_categories || [];
                 window.trivia.selectedDifficulties = data.settings.active_difficulties || ["Easy", "Medium", "Hard"];
-                
-                // Update UI checkboxes
                 updateCategoryCheckboxes();
                 updateDifficultyCheckboxes();
-                
-                // Update question stats
                 updateQuestionStats();
             }
         })
@@ -236,7 +219,6 @@ function fetchBroadcasterSettings() {
             console.error("❌ Error fetching broadcaster settings:", error);
         });
 }
-
 // ====== RENDERING FUNCTIONS ======
 
 // Render category checkboxes
@@ -502,48 +484,36 @@ function saveSettings() {
         return;
     }
 
-    console.log("📤 Sending settings update:", { answerTime, intervalTime });
+    const settings = { answerTime, intervalTime };
+    console.log("📤 Sending settings update:", settings);
 
     // Send via Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'UPDATE_SETTINGS',
-        answerTime: answerTime,
-        intervalTime: intervalTime
+        ...settings
     });
     
     // Also try direct server endpoint
-    fetch('/twitch/message', {
+    fetch(`${getApiBaseUrl()}/twitch/message`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             channelId: window.broadcasterId || "70361469",
             message: {
                 type: 'UPDATE_SETTINGS',
-                answerTime: answerTime,
-                intervalTime: intervalTime
+                ...settings
             }
         })
     })
     .then(response => response.json())
-    .then(data => {
-        console.log("⚙️ Server endpoint response for settings:", data);
-    })
-    .catch(error => {
-        console.error("❌ Error with server settings endpoint:", error);
-    });
+    .then(data => console.log("⚙️ Server endpoint response for settings:", data))
+    .catch(error => console.error("❌ Error with server settings endpoint:", error));
     
     // Also call direct API endpoint
-    fetch('/update-settings', {
+    fetch(`${getApiBaseUrl()}/update-settings`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            answerTime: answerTime,
-            intervalTime: intervalTime
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
     })
     .then(response => response.json())
     .then(data => {
@@ -558,9 +528,7 @@ function saveSettings() {
     
     // Show loading state on button
     document.getElementById("save-settings").disabled = true;
-    setTimeout(() => {
-        document.getElementById("save-settings").disabled = false;
-    }, 1000);
+    setTimeout(() => document.getElementById("save-settings").disabled = false, 1000);
 }
 
 // Save category and difficulty filters
@@ -573,54 +541,43 @@ function saveFilters() {
         return;
     }
     
-    console.log("📊 Current filter state:", {
-        categories: window.trivia.selectedCategories,
-        difficulties: window.trivia.selectedDifficulties
-    });
+    const filterData = {
+        activeCategories: window.trivia.selectedCategories,
+        activeDifficulties: window.trivia.selectedDifficulties
+    };
+    
+    console.log("📊 Current filter state:", filterData);
     
     // Send data via Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'SAVE_FILTERS',
         broadcasterId: window.broadcasterId,
-        activeCategories: window.trivia.selectedCategories,
-        activeDifficulties: window.trivia.selectedDifficulties
+        ...filterData
     });
     console.log("📤 Sent SAVE_FILTERS via Twitch messaging");
     
     // Also try direct server endpoint (not API)
-    fetch('/twitch/message', {
+    fetch(`${getApiBaseUrl()}/twitch/message`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             channelId: window.broadcasterId,
             message: {
                 type: 'SAVE_FILTERS',
                 broadcasterId: window.broadcasterId,
-                activeCategories: window.trivia.selectedCategories,
-                activeDifficulties: window.trivia.selectedDifficulties
+                ...filterData
             }
         })
     })
     .then(response => response.json())
-    .then(data => {
-        console.log("💾 Server endpoint response:", data);
-    })
-    .catch(error => {
-        console.error("❌ Error with server endpoint:", error);
-    });
+    .then(data => console.log("💾 Server endpoint response:", data))
+    .catch(error => console.error("❌ Error with server endpoint:", error));
     
     // Also use direct API call as backup
-    fetch(`/api/settings/${window.broadcasterId}`, {
+    fetch(`${getApiBaseUrl()}/api/settings/${window.broadcasterId}`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            activeCategories: window.trivia.selectedCategories,
-            activeDifficulties: window.trivia.selectedDifficulties
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filterData)
     })
     .then(response => response.json())
     .then(data => {
@@ -646,9 +603,7 @@ function saveFilters() {
     
     // Show loading state on button
     document.getElementById("save-filters").disabled = true;
-    setTimeout(() => {
-        document.getElementById("save-filters").disabled = false;
-    }, 1000);
+    setTimeout(() => document.getElementById("save-filters").disabled = false, 1000);
 }
 
 // Export scores via iframe download
@@ -693,26 +648,20 @@ function startTrivia() {
     console.log("📤 Sent START_TRIVIA via Twitch messaging");
     
     // 2. Also try direct API call as backup
-    fetch('/start-trivia', {
+    fetch(`${getApiBaseUrl()}/start-trivia`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            broadcasterId: window.broadcasterId
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broadcasterId: window.broadcasterId })
     })
     .then(response => response.json())
     .then(data => {
         console.log("🚀 Direct API start trivia response:", data);
+        triviaActive = true;
+        disableSettings(true);
+        
         if (data.success) {
-            triviaActive = true;
-            disableSettings(true);
             showButtonSuccess("start-trivia", "Trivia Started!");
         } else {
-            // Still mark trivia as started if the message was sent via Twitch
-            triviaActive = true;
-            disableSettings(true);
             showButtonError("start-trivia", data.message || "Started via Twitch");
         }
     })
@@ -727,7 +676,6 @@ function startTrivia() {
     // Pre-emptively disable settings, we'll assume it worked
     disableSettings(true);
 }
-
 // End trivia immediately - MODIFIED FOR DUAL APPROACH
 function endTrivia() {
     console.log("⛔ End Trivia button clicked!");
@@ -746,26 +694,20 @@ function endTrivia() {
     console.log("📤 Sent END_TRIVIA via Twitch messaging");
     
     // 2. Also try direct API call as backup
-    fetch('/end-trivia', {
+    fetch(`${getApiBaseUrl()}/end-trivia`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            broadcasterId: window.broadcasterId
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broadcasterId: window.broadcasterId })
     })
     .then(response => response.json())
     .then(data => {
         console.log("⛔ Direct API end trivia response:", data);
+        triviaActive = false;
+        disableSettings(false);
+        
         if (data.success) {
-            triviaActive = false;
-            disableSettings(false);
             showButtonSuccess("end-trivia", "Trivia Ended!");
         } else {
-            // Still mark trivia as ended if the message was sent via Twitch
-            triviaActive = false;
-            disableSettings(false);
             showButtonError("end-trivia", data.message || "Ended via Twitch");
         }
     })
@@ -848,45 +790,36 @@ function updateQuestionStats() {
     const difficultiesParam = difficulties.join(',');
     
     console.log("📊 Updating question stats with filters:", {
-        categories: categories,
-        difficulties: difficulties,
-        categoriesParam: categoriesParam,
-        difficultiesParam: difficultiesParam
+        categories, difficulties, categoriesParam, difficultiesParam
     });
     
     // 1. Try Twitch messaging
     window.Twitch.ext.send('broadcast', 'application/json', {
         type: 'GET_QUESTION_STATS',
-        categories: categories,
-        difficulties: difficulties
+        categories,
+        difficulties
     });
     console.log("📤 Sent GET_QUESTION_STATS via Twitch messaging");
     
     // 2. Also try direct server endpoint
-    fetch('/twitch/message', {
+    fetch(`${getApiBaseUrl()}/twitch/message`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             channelId: window.broadcasterId || "70361469",
             message: {
                 type: 'GET_QUESTION_STATS',
-                categories: categories,
-                difficulties: difficulties
+                categories,
+                difficulties
             }
         })
     })
     .then(response => response.json())
-    .then(data => {
-        console.log("📊 Server endpoint response for stats:", data);
-    })
-    .catch(error => {
-        console.error("❌ Error with server stats endpoint:", error);
-    });
+    .then(data => console.log("📊 Server endpoint response for stats:", data))
+    .catch(error => console.error("❌ Error with server stats endpoint:", error));
     
     // 3. Try direct API call with proper parameters
-    let apiUrl = '/api/sample-questions';
+    let apiUrl = `${getApiBaseUrl()}/api/sample-questions`;
     const params = [];
     
     if (categoriesParam) params.push(`categories=${categoriesParam}`);

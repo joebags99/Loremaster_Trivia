@@ -137,7 +137,13 @@ function createMockTwitchForTesting() {
 function loadCategoriesDirectAPI() {
     console.log("🔍 Loading categories via direct API");
     
-    fetch('/api/categories')
+    // Determine API base URL - use absolute URL when on Twitch
+    const baseUrl = window.location.hostname.includes('ext-twitch.tv')
+        ? 'https://loremaster-trivia.com/'
+        : '';
+    
+    // Use the constructed URL for the API call
+    fetch(`${baseUrl}/api/categories`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);

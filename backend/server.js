@@ -106,6 +106,7 @@ const corsOptions = {
       // Your domain
       'https://loremaster-trivia.com',
       'https://api.loremaster-trivia.com',
+      'https://4jbcl7pxl1a654ueogvwz6z8xsnyed.ext-twitch.tv/',
       // For local development
       'http://localhost:8080',
       'http://localhost:5000',

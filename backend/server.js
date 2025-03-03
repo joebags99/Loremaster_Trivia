@@ -134,6 +134,19 @@ const corsOptions = {
   maxAge: 86400 // 24 hours
 };
 
+function cleanUserId(userId) {
+  if (!userId) return userId;
+  // Convert to string if not already
+  userId = String(userId);
+  
+  // Twitch channel IDs are numeric - remove any non-numeric prefix
+  if (userId.startsWith('U') && /^U\d+$/.test(userId)) {
+    return userId.substring(1); // Remove the 'U'
+  }
+  
+  return userId;
+}
+
 // Initialize Express app
 const app = express();
 
@@ -344,7 +357,14 @@ async function fetchUsernames(userIds) {
     // Filter and clean user IDs
     const validUserIds = userIds
       .filter(id => id && typeof id === 'string') // Ensure IDs are strings
-      .map(id => id.trim()) // Trim whitespace
+      .map(id => {
+        id = id.trim();
+        // Remove 'U' prefix if it exists
+        if (id.startsWith('U') && /^U\d+$/.test(id)) {
+          return id.substring(1);
+        }
+        return id;
+      })
       .filter(id => /^\d+$/.test(id)); // Only keep numeric IDs (Twitch IDs are numeric)
     
     if (validUserIds.length === 0) {
@@ -352,7 +372,6 @@ async function fetchUsernames(userIds) {
       return;
     }
     
-    // Log the IDs we're trying to fetch
     console.log(`🔍 Attempting to fetch usernames for ${validUserIds.length} IDs:`, 
       validUserIds.slice(0, 5).join(', '), validUserIds.length > 5 ? '...' : '');
     
@@ -389,6 +408,9 @@ async function fetchUsernames(userIds) {
           // Update cache with response data
           response.data.data.forEach(user => {
             userIdToUsername[user.id] = user.display_name;
+            
+            // Also store with 'U' prefix to handle both formats
+            userIdToUsername['U' + user.id] = user.display_name;
           });
           
           // Log a few examples of what we got
@@ -417,7 +439,6 @@ async function fetchUsernames(userIds) {
       }
     }
     
-    // Log how many usernames we have in total now
     console.log(`📊 We now have ${Object.keys(userIdToUsername).length} username mappings`);
     
   } catch (error) {
@@ -693,8 +714,11 @@ app.get("/api/leaderboard", async (req, res) => {
       ...Object.keys(userSessionScores)
     ]));
     
+    // MODIFY: Clean all user IDs before processing
+    const cleanedUserIds = allUserIds.map(id => cleanUserId(id));
+    
     // If we have missing usernames, try to fetch them from Twitch API
-    const missingIds = allUserIds.filter(id => !userIdToUsername[id]);
+    const missingIds = cleanedUserIds.filter(id => !userIdToUsername[id]);
     
     if (missingIds.length > 0) {
       console.log(`🔍 Fetching missing usernames for ${missingIds.length} users`);
@@ -709,20 +733,26 @@ app.get("/api/leaderboard", async (req, res) => {
     
     // Convert to a more usable format with usernames
     const totalLeaderboard = dbScores.map(entry => {
+      // MODIFY: Clean the user ID before looking up username
+      const cleanId = cleanUserId(entry.userId);
       return {
         userId: entry.userId,
-        username: entry.username || userIdToUsername[entry.userId] || `User-${entry.userId.substring(0, 5)}...`,
+        username: entry.username || userIdToUsername[cleanId] || `User-${cleanId.substring(0, 5)}...`,
         score: entry.score
       };
     });
     
     // Sort session scores and get top 20
     const sessionScores = Object.entries(userSessionScores)
-      .map(([userId, score]) => ({
-        userId,
-        username: userIdToUsername[userId] || `User-${userId.substring(0, 5)}...`,
-        score
-      }))
+      .map(([userId, score]) => {
+        // MODIFY: Clean the user ID before looking up username
+        const cleanId = cleanUserId(userId);
+        return {
+          userId,
+          username: userIdToUsername[cleanId] || `User-${cleanId.substring(0, 5)}...`,
+          score
+        };
+      })
       .sort((a, b) => b.score - a.score)
       .slice(0, 20);
     
@@ -2195,65 +2225,6 @@ app.get("/api/sample-questions", async (req, res) => {
   } catch (error) {
     console.error("❌ Error getting sample questions:", error);
     res.status(500).json({ error: "Failed to get sample questions" });
-  }
-});
-
-// New endpoint to get leaderboard data
-app.get("/api/leaderboard", async (req, res) => {
-  console.log("AAAAAAA"+req)
-  try {
-    // Get top scores from database
-    const dbScores = await Score.findAll({
-      order: [['score', 'DESC']],
-      limit: 20
-    });
-    
-    // Extract all user IDs
-    const allUserIds = Array.from(new Set([
-      ...dbScores.map(entry => entry.userId),
-      ...Object.keys(userSessionScores)
-    ]));
-    
-    // If we have missing usernames, try to fetch them from Twitch API
-    const missingIds = allUserIds.filter(id => !userIdToUsername[id]);
-    
-    if (missingIds.length > 0) {
-      console.log(`🔍 Fetching missing usernames for ${missingIds.length} users`);
-      try {
-        // Try to get usernames from Twitch API
-        await fetchUsernames(missingIds);
-      } catch (error) {
-        console.error("⚠️ Error fetching usernames from API:", error);
-        // Continue with what we have
-      }
-    }
-    
-    // Convert to a more usable format with usernames
-    const totalLeaderboard = dbScores.map(entry => {
-      return {
-        userId: entry.userId,
-        username: userIdToUsername[entry.userId] || `User-${entry.userId.substring(0, 5)}...`,
-        score: entry.score
-      };
-    });
-    
-    // Sort session scores and get top 20
-    const sessionScores = Object.entries(userSessionScores)
-      .map(([userId, score]) => ({
-        userId,
-        username: userIdToUsername[userId] || `User-${userId.substring(0, 5)}...`,
-        score
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 20);
-    
-    res.json({
-      total: totalLeaderboard,
-      session: sessionScores
-    });
-  } catch (error) {
-    console.error("❌ Error fetching leaderboard:", error);
-    res.status(500).json({ error: "Failed to fetch leaderboard" });
   }
 });
 

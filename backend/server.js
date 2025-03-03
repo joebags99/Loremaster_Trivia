@@ -233,7 +233,7 @@ app.use((req, res, next) => {
 /**
  * Frontend Static Files Serving
  */
-const frontendPath = path.join(__dirname, "./frontend");
+const frontendPath = path.join(__dirname, "../frontend");
 app.use(express.static(frontendPath));
 
 // Define routes for frontend pages

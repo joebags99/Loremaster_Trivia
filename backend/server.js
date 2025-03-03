@@ -344,6 +344,110 @@ async function getTwitchOAuthToken() {
   }
 }
 
+// Import the username resolver
+const usernameResolver = require('./username-resolver');
+
+// Endpoint to resolve a username immediately
+app.get("/api/username/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Missing userId parameter" 
+      });
+    }
+    
+    console.log(`🔍 Resolving username for ${userId} via direct API call`);
+    
+    // Try to resolve the username
+    const username = await usernameResolver.resolveUsername(userId);
+    
+    // Return the result
+    if (username) {
+      return res.json({
+        success: true,
+        userId: userId,
+        username: username,
+        source: "resolver"
+      });
+    } else {
+      return res.json({
+        success: false,
+        userId: userId,
+        message: "Could not resolve username"
+      });
+    }
+  } catch (error) {
+    console.error(`❌ Error resolving username:`, error);
+    return res.status(500).json({
+      success: false,
+      error: "Server error",
+      message: error.message
+    });
+  }
+});
+
+// Endpoint to run the bulk username update process
+app.post("/api/update-usernames", async (req, res) => {
+  try {
+    console.log("🔄 Running bulk username update process");
+    
+    const count = await usernameResolver.updateDatabaseUsernames();
+    
+    return res.json({
+      success: true,
+      updatedCount: count,
+      message: `Updated ${count} usernames in the database`
+    });
+  } catch (error) {
+    console.error(`❌ Error in bulk username update:`, error);
+    return res.status(500).json({
+      success: false,
+      error: "Server error",
+      message: error.message
+    });
+  }
+});
+
+// Enhanced debugging endpoint
+app.get("/api/debug/usernames", async (req, res) => {
+  try {
+    // Get user scores with missing usernames
+    const [missingUsernames] = await sequelize.query(
+      "SELECT userId, score FROM user_scores WHERE username IS NULL OR username = '' ORDER BY score DESC LIMIT 10",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    
+    // Get top scores with usernames
+    const [topScores] = await sequelize.query(
+      "SELECT userId, username, score FROM user_scores WHERE username IS NOT NULL ORDER BY score DESC LIMIT 10",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    
+    // Get database statistics
+    const [stats] = await sequelize.query(
+      "SELECT COUNT(*) as total, SUM(CASE WHEN username IS NULL OR username = '' THEN 1 ELSE 0 END) as missing FROM user_scores",
+      { type: sequelize.QueryTypes.SELECT }
+    );
+    
+    return res.json({
+      success: true,
+      stats: stats || { total: 0, missing: 0 },
+      missingUsernames: missingUsernames || [],
+      topScores: topScores || []
+    });
+  } catch (error) {
+    console.error(`❌ Error in username debug:`, error);
+    return res.status(500).json({
+      success: false,
+      error: "Server error",
+      message: error.message
+    });
+  }
+});
+
 // Improved function to fetch usernames from Twitch API
 async function fetchUsernames(userIds) {
   if (!userIds || userIds.length === 0) return;

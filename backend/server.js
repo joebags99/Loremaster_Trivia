@@ -1138,11 +1138,61 @@ async function setUsername(userId, username) {
     try {
       // Clean ID for consistency
       const cleanId = cleanUserId(userId);
+      const originalId = userId;
       
-      // Update username if provided
-      if (username) {
-        await setUsername(cleanId, username);
+      console.log(`🔍 Processing score update for user ${cleanId} with username: ${username || 'NOT PROVIDED'}`);
+      
+      // First check if we already have a username for this user in memory
+      let effectiveUsername = username;
+      
+      // If no username provided in this request, try to find existing one
+      if (!effectiveUsername) {
+        // Check memory cache first (for both ID formats)
+        if (userIdToUsername[originalId]) {
+          effectiveUsername = userIdToUsername[originalId];
+          console.log(`📋 Using existing username from memory for ${originalId}: ${effectiveUsername}`);
+        } else if (userIdToUsername[cleanId]) {
+          effectiveUsername = userIdToUsername[cleanId];
+          console.log(`📋 Using existing username from memory for ${cleanId}: ${effectiveUsername}`);
+        } else {
+          // Try database as a last resort
+          try {
+            const existingUser = await Score.findOne({
+              where: {
+                userId: {
+                  [Sequelize.Op.or]: [cleanId, originalId]
+                }
+              }
+            });
+            
+            if (existingUser && existingUser.username) {
+              effectiveUsername = existingUser.username;
+              console.log(`📋 Retrieved username from database: ${effectiveUsername}`);
+              
+              // Store in memory for future use
+              userIdToUsername[cleanId] = effectiveUsername;
+              if (originalId !== cleanId) {
+                userIdToUsername[originalId] = effectiveUsername;
+              }
+            }
+          } catch (dbLookupError) {
+            console.error("❌ Error looking up username in database:", dbLookupError);
+          }
+        }
       }
+      
+      // Update username if we have one (either from request or from lookup)
+      if (effectiveUsername) {
+        await setUsername(cleanId, effectiveUsername);
+        
+        // If it's a generated username like "User-U7036", don't actually use it
+        if (effectiveUsername.startsWith("User-") && /User-U\d+/.test(effectiveUsername)) {
+          console.warn(`⚠️ Not storing auto-generated username format: ${effectiveUsername}`);
+          effectiveUsername = null; // Don't use auto-generated usernames
+        }
+      }
+      
+      // Rest of the function remains the same...
       
       // Track total score in memory (for backup)
       if (!usersScores[cleanId]) usersScores[cleanId] = 0;
@@ -1164,7 +1214,7 @@ async function setUsername(userId, username) {
           where: { userId: cleanId },
           defaults: {
             userId: cleanId,
-            username: username || null,
+            username: effectiveUsername || null, // Use our carefully determined username
             score: points,
             lastUpdated: new Date()
           }
@@ -1175,9 +1225,10 @@ async function setUsername(userId, username) {
           userScore.score += points;
           userScore.lastUpdated = new Date();
           
-          // Update username if provided
-          if (username) {
-            userScore.username = username;
+          // Update username if provided and record doesn't already have one
+          if (effectiveUsername && (!userScore.username || userScore.username.startsWith("User-"))) {
+            console.log(`✏️ Updating database username to: ${effectiveUsername}`);
+            userScore.username = effectiveUsername;
           }
           
           await userScore.save();
@@ -1196,7 +1247,7 @@ async function setUsername(userId, username) {
       console.error("❌ Error in updateUserScore:", error);
       return { totalScore: 0, sessionScore: 0 };
     }
-  }
+}
   
   /**
    * Process identity-linked username from Twitch
@@ -1983,16 +2034,25 @@ app.post("/submit-answer", async (req, res) => {
   // Extension identity endpoint
   app.post("/extension-identity", async (req, res) => {
     try {
-      const { userId, username } = req.body;
+      const { userId, username, identityId } = req.body;
       
       if (!userId) {
         return res.status(400).json({ error: "Missing userId" });
       }
       
-      // Store username if provided
+      // Store username if provided directly
       if (username) {
         console.log(`👤 Received extension identity: User ${userId} is "${username}"`);
         await setUsername(userId, username);
+      }
+      // If identity ID is provided but no username, try to resolve it
+      else if (identityId) {
+        console.log(`👤 Attempting to resolve username for identity: ${identityId}`);
+        // Try to get Twitch OAuth token
+        const token = await getTwitchOAuthToken();
+        if (token) {
+          await processIdentityLinkedUser(userId, identityId, EXT_CLIENT_ID, token);
+        }
       }
       
       res.json({ success: true });

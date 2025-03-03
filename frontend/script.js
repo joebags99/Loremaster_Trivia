@@ -25,18 +25,40 @@ window.Twitch.ext.onAuthorized((auth) => {
     userId = auth.userId;
     console.log("✅ User Authorized:", userId);
     
-    // Get Twitch username if available
-    if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.opaqueId) {
-      twitchUsername = window.Twitch.ext.viewer.displayName || `User-${auth.userId.substring(0, 5)}`;
-      console.log("👤 Viewer username:", twitchUsername);
+    // Get Twitch username if available and store in localStorage to persist
+    if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.displayName) {
+        twitchUsername = window.Twitch.ext.viewer.displayName;
+        
+        // Store username in localStorage as a backup
+        try {
+            localStorage.setItem('twitchUsername', twitchUsername);
+            localStorage.setItem('twitchUserId', userId);
+        } catch (e) {
+            console.warn("⚠️ Could not store username in localStorage", e);
+        }
+        
+        console.log("👤 Viewer username set:", twitchUsername);
+    } else {
+        // Try to recover from localStorage if available
+        try {
+            const storedUsername = localStorage.getItem('twitchUsername');
+            const storedUserId = localStorage.getItem('twitchUserId');
+            
+            if (storedUsername && storedUserId === userId) {
+                twitchUsername = storedUsername;
+                console.log("👤 Restored username from localStorage:", twitchUsername);
+            }
+        } catch (e) {
+            // Ignore localStorage errors
+        }
     }
     
-    // Send username to server (this is the new line)
+    // Send username to server right away
     sendUsername();
     
     // Fetch the user's score from the database
     fetchUserScore(userId);
-  });  
+});  
 
 // --- DOM Elements ---
 const waitingScreen = document.getElementById("waiting-screen");
@@ -492,10 +514,17 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
     const answerTime = Date.now() - questionStartTime;
     console.log(`📩 User ${userId} answered in ${answerTime}ms (Difficulty: ${currentQuestionDifficulty})`);
 
-    // Prepare data for submission - now with username
+    // IMPORTANT: Make sure we have a valid username to send
+    // If twitchUsername isn't set, try to get it from Twitch API again
+    if (!twitchUsername && window.Twitch.ext.viewer && window.Twitch.ext.viewer.displayName) {
+        twitchUsername = window.Twitch.ext.viewer.displayName;
+        console.log(`🔄 Retrieved username from Twitch API: ${twitchUsername}`);
+    }
+
+    // Prepare data for submission with guaranteed username if possible
     const answerData = {
         userId: userId,
-        username: twitchUsername, // Added username to the data sent
+        username: twitchUsername || null, // Make sure this is explicitly null if not available
         selectedAnswer: selectedChoice,
         correctAnswer: correctAnswer,
         answerTime: answerTime,
@@ -503,8 +532,9 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
         duration: currentQuestionDuration
     };
     
-    // Log the data being sent
+    // Log the data being sent with username information
     console.log("📤 Submitting answer data:", answerData);
+    console.log(`🔍 Username check: ${twitchUsername ? "Username available" : "No username available!"}`);
 
     // Submit answer to server
     fetch(`${getApiBaseUrl()}/submit-answer`, {
@@ -532,9 +562,6 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
                 pointsEarned: data.pointsEarned,
                 timePercentage: data.timePercentage
             };
-            
-            // We removed the immediate point display here to prevent double-stacking
-            // Points will be shown when the timer runs out
         }
     })
     .catch(error => {

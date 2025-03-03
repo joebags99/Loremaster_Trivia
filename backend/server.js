@@ -540,6 +540,14 @@ async function initDatabase() {
   }
 }
 
+// Call this after database initialization with a consistent promise chain
+initDatabase()
+  .then(() => loadInitialQuestions())
+  .then(() => repairUserIds())
+  .catch(error => {
+    console.error("❌ Initialization error:", error);
+  });
+
 // Function to fix user IDs issue with Twitch API
 async function repairUserIds() {
   try {
@@ -597,16 +605,6 @@ async function repairUserIds() {
   }
 }
 
-// Call this after database initialization
-initDatabase()
-  .then(() => loadInitialQuestions())
-  .then(() => repairUserIds())
-  .catch(error => {
-    console.error("❌ Initialization error:", error);
-  });
-
-
-
 // Helper function to log username stats
 function logUsernameStats() {
   const userCount = Object.keys(userIdToUsername).length;
@@ -617,12 +615,6 @@ function logUsernameStats() {
   }
 }
 
-// Initialize database
-initDatabase().catch(error => {
-  console.error("❌ Database initialization failed:", error);
-});
-
-// Add username capture endpoint
 // Merged username capture endpoint with ID cleaning
 app.post("/api/set-username", express.json(), (req, res) => {
   try {
@@ -800,27 +792,6 @@ app.get("/api/leaderboard", async (req, res) => {
   }
 });
 
-// Initialize database connection
-async function initDatabase() {
-  try {
-    // Test the connection
-    await sequelize.authenticate();
-    console.log("✅ Database connection established successfully.");
-    
-    // Sync models with database (create tables if they don't exist)
-    await sequelize.sync();
-    console.log("✅ Database tables synchronized.");
-    
-    // Run database structure debug
-    await debugDatabaseStructure();
-    
-  } catch (error) {
-    console.error("❌ Unable to connect to the database:", error);
-    // Don't exit the process - the app can still work without DB
-    console.warn("⚠️ Continuing without database persistence. Scores will be lost on server restart.");
-  }
-}
-
 // Load initial questions to memory (for backward compatibility)
 async function loadInitialQuestions() {
   try {
@@ -843,11 +814,6 @@ async function loadInitialQuestions() {
     triviaQuestions = [];
   }
 }
-
-// Call this after database initialization
-initDatabase().then(() => {
-  loadInitialQuestions();
-});
 
 // Function to load questions from database with optional filters
 async function loadQuestionsFromDB(categories = [], difficulties = []) {
@@ -1172,40 +1138,6 @@ async function broadcastToTwitch(channelId, message) {
     return false;
   }
 }
-
-app.post("/extension-identity", express.json(), (req, res) => {
-  try {
-    const { userId, username } = req.body;
-    
-    if (!userId) {
-      return res.status(400).json({ error: "Missing userId" });
-    }
-    
-    // Store username if provided
-    if (username) {
-      console.log(`👤 Received extension identity: User ${userId} is "${username}"`);
-      userIdToUsername[userId] = username;
-      
-      // Also update in database if possible
-      Score.findByPk(userId).then(userScore => {
-        if (userScore) {
-          userScore.username = username;
-          return userScore.save();
-        }
-      }).catch(err => {
-        console.error("❌ Error updating username in database:", err);
-      });
-    }
-    
-    // Log stats after update
-    logUsernameStats();
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error("❌ Error in extension-identity endpoint:", error);
-    res.status(500).json({ error: "Server error" });
-  }
-});
 
 // ✅ Middleware: Verify Twitch JWT tokens for secured routes
 function verifyTwitchJWT(req, res, next) {
@@ -2093,49 +2025,6 @@ app.get("/api/difficulties", async (req, res) => {
     res.status(500).json({ error: "Failed to get difficulties" });
   }
 });
-
-// Debug function to check database structure 
-async function debugDatabaseStructure() {
-  try {
-    console.log("🔍 Checking database structure...");
-    
-    // Check if the username column exists
-    const [results] = await sequelize.query(
-      "SHOW COLUMNS FROM user_scores LIKE 'username'"
-    );
-    
-    if (results.length === 0) {
-      console.log("⚠️ Username column doesn't exist in database. Adding it now...");
-      
-      // Add the username column if it doesn't exist
-      await sequelize.query(
-        "ALTER TABLE user_scores ADD COLUMN username VARCHAR(255)"
-      );
-      console.log("✅ Username column added to database");
-    } else {
-      console.log("✅ Username column exists in database");
-    }
-    
-    // Check for sample user data
-    const users = await Score.findAll({ limit: 5 });
-    console.log("📊 Sample user data:", users.map(u => ({
-      userId: u.userId,
-      username: u.username,
-      score: u.score
-    })));
-    
-    // Check memory username mapping
-    console.log("📊 Memory username mapping sample:", 
-      Object.keys(userIdToUsername).slice(0, 5).map(key => ({
-        userId: key, 
-        username: userIdToUsername[key]
-      }))
-    );
-    
-  } catch (error) {
-    console.error("❌ Error checking database structure:", error);
-  }
-}
 
 // Get broadcaster's trivia settings
 app.get("/api/settings/:broadcasterId", async (req, res) => {

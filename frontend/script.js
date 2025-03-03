@@ -477,9 +477,6 @@ function selectAnswer(button, selectedChoice, correctAnswer) {
         return;
     }
     
-    // Try to send username if we have it but haven't sent it yet
-    sendUsername();
-    
     console.log("User selected:", selectedChoice, " | Correct answer:", correctAnswer);
     
     // Disable all buttons to prevent multiple selections

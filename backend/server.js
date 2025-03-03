@@ -991,7 +991,7 @@ const Score = sequelize.define("Score", {
     intervalTime: 600000,  // Default 10 minutes
   };
   
- /********************************
+/********************************
  * SECTION 4: USER MANAGEMENT
  ********************************/
 
@@ -1050,6 +1050,52 @@ async function setUsername(userId, username) {
     } catch (error) {
       console.error("❌ Error in setUsername:", error);
       return false;
+    }
+  }
+  
+  /**
+   * Resolve Twitch username using Helix API
+   * Only works when Identity links are enabled
+   * @param {string} userId - Twitch user ID
+   * @param {string} clientId - Extension client ID
+   * @param {string} helixToken - Helix API token
+   * @returns {Promise<string|null>} Username or null if not found
+   */
+  async function resolveTwitchUsername(userId, clientId, helixToken) {
+    try {
+      if (!userId || !clientId || !helixToken) {
+        console.warn("⚠️ Missing required params for Twitch username resolution");
+        return null;
+      }
+      
+      // Clean the user ID (remove U prefix if present)
+      const cleanId = cleanUserId(userId);
+      
+      console.log(`🔍 Resolving Twitch username for ID: ${cleanId} using Helix API`);
+      
+      // Call Twitch Helix API
+      const response = await axios.get(`https://api.twitch.tv/helix/users?id=${cleanId}`, {
+        headers: {
+          "Client-Id": clientId,
+          "Authorization": `Extension ${helixToken}`
+        }
+      });
+      
+      if (response.data && response.data.data && response.data.data.length > 0) {
+        const displayName = response.data.data[0].display_name;
+        console.log(`✅ Resolved Twitch username: ${displayName} for ID ${cleanId}`);
+        
+        // Save to memory and database using existing function
+        await setUsername(userId, displayName);
+        
+        return displayName;
+      } else {
+        console.warn(`⚠️ No Twitch user found for ID ${cleanId} with Helix API`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`❌ Error resolving Twitch username:`, error.response?.data || error.message);
+      return null;
     }
   }
   
@@ -1149,6 +1195,44 @@ async function setUsername(userId, username) {
     } catch (error) {
       console.error("❌ Error in updateUserScore:", error);
       return { totalScore: 0, sessionScore: 0 };
+    }
+  }
+  
+  /**
+   * Process identity-linked username from Twitch
+   * Call this when receiving Twitch JWT with identity link
+   * @param {string} userId - The user ID from JWT
+   * @param {string} identityId - The user's actual Twitch ID (if linked)
+   * @param {string} clientId - Client ID of extension
+   * @param {string} helixToken - Twitch Helix token 
+   * @returns {Promise<boolean>} Success status
+   */
+  async function processIdentityLinkedUser(userId, identityId, clientId, helixToken) {
+    if (!userId || !identityId) {
+      console.warn("⚠️ Missing identity information");
+      return false;
+    }
+    
+    try {
+      console.log(`👤 Processing identity-linked user: ${userId} (Twitch ID: ${identityId})`);
+      
+      // Try to get username using Helix API
+      const displayName = await resolveTwitchUsername(identityId, clientId, helixToken);
+      
+      if (displayName) {
+        // Also set username for the opaque user ID (JWT userId) if different
+        if (userId !== identityId) {
+          await setUsername(userId, displayName);
+        }
+        
+        return true;
+      } else {
+        console.warn(`⚠️ Could not get display name for identity-linked user ${identityId}`);
+        return false;
+      }
+    } catch (error) {
+      console.error("❌ Error processing identity-linked user:", error);
+      return false;
     }
   }
   

@@ -15,6 +15,12 @@ const { Console } = require("console");
 const { Sequelize, DataTypes } = require("sequelize");
 const PORT = process.env.PORT || 5000; // default port
 
+// ✅ Load Environment Variables
+const EXT_CLIENT_ID = process.env.EXT_CLIENT_ID;
+const EXT_OWNER_ID = process.env.EXT_OWNER_ID;
+const EXT_SECRET = process.env.EXT_SECRET;
+const extSecretBuffer = Buffer.from(EXT_SECRET, 'base64');
+
 // Debug environment variables
 console.log("========== ENVIRONMENT VARIABLES DEBUG ==========");
 console.log(`PORT: ${process.env.PORT || "(using default 5000)"}`);
@@ -984,12 +990,6 @@ app.get("/overlay", (req, res) => {
   res.sendFile(path.join(frontendPath, "overlay.html"));
   console.log("✅ Serving overlay.html from:", frontendPath);
 });
-
-// ✅ Load Environment Variables
-const EXT_CLIENT_ID = process.env.EXT_CLIENT_ID;
-const EXT_OWNER_ID = process.env.EXT_OWNER_ID;
-const EXT_SECRET = process.env.EXT_SECRET;
-const extSecretBuffer = Buffer.from(EXT_SECRET, 'base64');
 
 if (!EXT_CLIENT_ID || !EXT_OWNER_ID || !EXT_SECRET) {
   console.error("❌ ERROR: Missing required environment variables!");

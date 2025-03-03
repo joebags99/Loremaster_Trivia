@@ -844,7 +844,7 @@ app.get("/api/leaderboard", async (req, res) => {
     // If we have missing usernames, try to fetch them from Twitch API
     const missingIds = cleanedUserIds.filter(id => !userIdToUsername[id]);
     
-    if (cleanUserIds.length > 0) {
+    if (cleanedUserIds.length > 0) {
       console.log(`🔍 Fetching missing usernames for ${missingIds.length} users`);
       try {
         // Try to get usernames from Twitch API

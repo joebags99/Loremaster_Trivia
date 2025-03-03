@@ -865,17 +865,21 @@ app.get("/api/leaderboard", async (req, res) => {
     
     // Sort session scores and get top 20
     const sessionScores = Object.entries(userSessionScores)
-      .map(([userId, score]) => {
-        // MODIFY: Clean the user ID before looking up username
-        const cleanId = cleanUserId(userId);
-        return {
-          userId,
-          username: userIdToUsername[cleanId] || `User-${cleanId.substring(0, 5)}...`,
-          score
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 20);
+    .map(([userId, score]) => {
+      // Clean the user ID for username lookup
+      const cleanId = cleanUserId(userId);
+      
+      // Try both the original and cleaned ID for username lookup
+      const username = userIdToUsername[userId] || userIdToUsername[cleanId] || `User-${userId.substring(0, 5)}...`;
+      
+      return {
+        userId,
+        username,
+        score
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
     
     // Log the first few entries to debug
     if (totalLeaderboard.length > 0) {

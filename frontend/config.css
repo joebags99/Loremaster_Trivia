@@ -223,6 +223,190 @@ button:hover {
     border-top: 1px solid rgba(255, 204, 0, 0.3);
 }
 
+/* Add these styles to your config.css file */
+
+/* Leaderboard controls styling */
+.leaderboard-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.leaderboard-controls button {
+    padding: 8px 15px;
+    min-width: 120px;
+    margin: 0; /* Override default button margin */
+    width: auto; /* Override default button width */
+    transition: all 0.2s ease;
+}
+
+/* Active board button styling */
+button.active-board {
+    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
+    box-shadow: 0px 0px 10px rgba(255, 204, 0, 0.8);
+    transform: scale(1.05);
+    border-color: #ffcc00;
+}
+
+/* Leaderboard Table Styling */
+.leaderboard-container {
+    max-height: 400px;
+    overflow-y: auto;
+    margin: 15px 0;
+    background: rgba(20, 15, 10, 0.7);
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #ffeb9b;
+    text-align: left;
+}
+
+.leaderboard-table th {
+    background: rgba(60, 40, 20, 0.8);
+    padding: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 2px solid #c4a484;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.leaderboard-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(196, 164, 132, 0.3);
+}
+
+.leaderboard-table tr:nth-child(even) {
+    background: rgba(40, 30, 20, 0.5);
+}
+
+.leaderboard-table tr:hover {
+    background: rgba(80, 60, 30, 0.5);
+}
+
+/* Top 3 ranks styling */
+.leaderboard-table tr.rank-1 td {
+    color: #ffd700; /* Gold */
+    font-weight: bold;
+    background: rgba(80, 60, 10, 0.5);
+}
+
+.leaderboard-table tr.rank-2 td {
+    color: #c0c0c0; /* Silver */
+    font-weight: bold;
+    background: rgba(70, 70, 80, 0.3);
+}
+
+.leaderboard-table tr.rank-3 td {
+    color: #cd7f32; /* Bronze */
+    font-weight: bold;
+    background: rgba(80, 50, 30, 0.3);
+}
+
+.loading-text {
+    text-align: center;
+    font-style: italic;
+    color: #c4a484;
+    padding: 20px !important;
+}
+
+/* 🔘 Buttons - with better centering */
+button {
+    background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
+    border: 2px solid #c4a484;
+    color: white;
+    font-size: 1rem;
+    font-family: 'Merriweather', serif;
+    padding: 10px 15px;
+    margin-top: 10px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0px 0px 8px rgba(255, 204, 0, 0.7);
+    width: 95%;
+    display: block;
+    margin: 10px auto;
+    position: relative;
+    overflow: hidden; /* Keep animations contained */
+    min-height: 44px;
+    text-align: center;
+}
+
+button:hover {
+    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
+    box-shadow: 0px 0px 15px rgba(255, 204, 0, 1);
+    transform: scale(1.05);
+}
+
+/* Replace the button animation CSS with this corrected version */
+
+/* Button feedback styling */
+button.btn-success {
+    background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%);
+    border-color: #1e7e34;
+    box-shadow: 0px 0px 15px rgba(34, 255, 34, 0.4);
+    animation: fadeSuccess 3s forwards;
+}
+
+button.btn-error {
+    background: linear-gradient(180deg, #8b0000 0%, #400000 100%);
+    border-color: #b30000;
+    box-shadow: 0px 0px 15px rgba(255, 34, 34, 0.4);
+    animation: fadeError 3s forwards;
+}
+
+/* Button state animations */
+@keyframes fadeSuccess {
+    0% { background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%); border-color: #1e7e34; }
+    80% { background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%); border-color: #1e7e34; }
+    100% { background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%); border-color: #c4a484; }
+}
+
+@keyframes fadeError {
+    0% { background: linear-gradient(180deg, #8b0000 0%, #400000 100%); border-color: #b30000; }
+    80% { background: linear-gradient(180deg, #8b0000 0%, #400000 100%); border-color: #b30000; }
+    100% { background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%); border-color: #c4a484; }
+}
+
+/* Original text container */
+.btn-original-text {
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    display: inline-block;
+}
+
+/* When showing feedback, hide original text properly */
+button.btn-success .btn-original-text,
+button.btn-error .btn-original-text {
+    opacity: 0;
+}
+
+/* Temporary message styling */
+.btn-text-temp {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    text-align: center;
+    animation: fadeInOut 3s forwards;
+}
+
+/* Animation for temporary text */
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translate(-50%, -60%); }
+    15% { opacity: 1; transform: translate(-50%, -50%); }
+    85% { opacity: 1; transform: translate(-50%, -50%); }
+    100% { opacity: 0; transform: translate(-50%, -40%); }
+}
+
 /* 🔄 Responsive Fixes */
 @media (max-width: 768px) {
     .container {

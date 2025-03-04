@@ -55,11 +55,35 @@
         <button id="save-filters">💾 Save Question Filters</button>
     </fieldset>
 
-    <!-- ✅ Score Management -->
-    <fieldset>
-        <legend>🏆 Score Management</legend>
-        <button id="export-scores">📥 Export Scores</button>
-    </fieldset>
+<!-- ✅ Score Management & Leaderboard -->
+<fieldset>
+    <legend>🏆 Score Management & Leaderboard</legend>
+    
+    <!-- Leaderboard Controls -->
+    <div class="leaderboard-controls">
+        <button id="show-session-scores" class="active-board">📊 Session Scores</button>
+        <button id="show-total-scores">📈 All-Time Scores</button>
+        <button id="refresh-leaderboard">🔄 Refresh</button>
+    </div>
+    
+    <!-- Leaderboard Table -->
+    <div class="leaderboard-container">
+        <table id="leaderboard-table" class="leaderboard-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Username</th>
+                    <th>Score</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+                <tr>
+                    <td colspan="3" class="loading-text">Loading leaderboard data...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</fieldset>
 
     <fieldset>
         <legend>🏆 Trivia Controls</legend>

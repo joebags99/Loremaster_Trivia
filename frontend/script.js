@@ -1,439 +1,772 @@
-// --- Global Variables & Initialization ---
-let userId = null;             // Twitch user ID
-let questionStartTime = null;  // Timestamp when the current trivia question is shown
-let triviaActive = false;      // Flag indicating an active trivia round
-let nextQuestionTime = null;   // Track next trivia question time
-let lastAnswerData = null;     // Removes the last answer difficulty tab
-let questionRequested = false; // Prevents multiple requests
-let triviaSettings = {
-    answerTime: 30000,     // Default 30 seconds
-    intervalTime: 600000   // Default 10 minutes
-};
-let currentQuestionDifficulty = null; // Stores current question difficulty
-let currentQuestionDuration = null;   // Stores current question duration
+/**
+ * Loremaster Trivia Extension - Frontend Script
+ * Organized into logical chunks for maintainability
+ */
 
-// Retrieve Twitch User ID on authorization and fetch user score
-window.Twitch.ext.onAuthorized((auth) => {
-    console.log("✅ Extension authorized");
-    userId = auth.userId;
-    console.log("✅ User Authorized:", userId);
+// ======================================================
+// 1. CONFIGURATION & INITIALIZATION
+// ======================================================
+
+/**
+ * Global state management for the trivia application
+ */
+const TriviaState = {
+    userId: null,                     // User's Twitch ID
+    username: null,                   // User's Twitch username
+    triviaActive: false,              // Whether trivia is currently active
+    questionStartTime: null,          // When the current question started
+    nextQuestionTime: null,           // When the next question will appear
+    questionRequested: false,         // Flag to prevent duplicate question requests
+    lastAnswerData: null,             // Data from last answer for display
+    countdownUpdatedByPubSub: false,  // Flag to track PubSub countdown updates
+    currentQuestionDifficulty: null,  // Current question difficulty level
+    currentQuestionDuration: null,    // Current question duration
     
-    // Fetch the user's score from the database
-    fetchUserScore(userId);
-});
-
-// --- DOM Elements ---
-const waitingScreen = document.getElementById("waiting-screen");
-const quizContainer = document.getElementById("quiz-container");
-const questionText = document.getElementById("question-text");
-const choicesContainer = document.getElementById("choices-container");
-const timerBar = document.getElementById("timer-bar");
-const countdownTimer = document.getElementById("countdown-timer");
-
-// ✅ Track whether PubSub is updating the countdown
-let countdownUpdatedByPubSub = false;
-
-// ✅ UI State Management Function
-function setUIState(state) {
-    console.log(`🎭 Setting UI state to: ${state}`);
+    // Default settings
+    settings: {
+      answerTime: 30000,     // Default: 30 seconds
+      intervalTime: 600000   // Default: 10 minutes
+    },
     
-    // Hide all screens first
-    document.getElementById("waiting-screen").style.display = "none";
-    document.getElementById("quiz-container").style.display = "none";
-    document.getElementById("trivia-ended-screen").style.display = "none";
-    
-    // Show the appropriate screen
-    switch (state) {
-        case "waiting":
-            document.getElementById("waiting-screen").style.display = "flex";
-            document.getElementById("waiting-text").textContent = "Trivia has not started yet.";
-            countdownTimer.style.display = "none";
-            break;
-        case "countdown":
-            document.getElementById("waiting-screen").style.display = "flex";
-            document.getElementById("waiting-text").textContent = "Next question in:";
-            countdownTimer.style.display = "inline";
-            break;
-        case "question":
-            document.getElementById("quiz-container").style.display = "flex";
-            break;
-        case "ended":
-            document.getElementById("trivia-ended-screen").style.display = "block";
-            break;
+    /**
+     * Determines API base URL based on environment
+     * @returns {string} Base URL for API calls
+     */
+    getApiBaseUrl() {
+      return window.location.hostname.includes('ext-twitch.tv')
+        ? 'https://loremaster-trivia.com'
+        : '';
     }
-}
+  };
+  
+  /**
+   * Cache DOM elements to avoid repeated lookups
+   */
+  const UI = {
+    waitingScreen: document.getElementById("waiting-screen"),
+    quizContainer: document.getElementById("quiz-container"),
+    endedScreen: document.getElementById("trivia-ended-screen"),
+    questionText: document.getElementById("question-text"),
+    choicesContainer: document.getElementById("choices-container"),
+    timerBar: document.getElementById("timer-bar"),
+    countdownTimer: document.getElementById("countdown-timer"),
+    waitingText: document.getElementById("waiting-text"),
+    userScore: document.getElementById("user-score")
+  };
+  
+  // ======================================================
+  // 2. TWITCH EXTENSION INTEGRATION
+  // ======================================================
+  
+  /**
+   * Initialize Twitch extension and set up event listeners
+   */
+  function initializeTwitchExtension() {
+    // Set up authorization handler
+    window.Twitch.ext.onAuthorized(handleAuthorization);
+    
+    // Set up broadcast listener
+    window.Twitch.ext.listen("broadcast", handleBroadcastMessage);
+    
+    // Initialize UI
+    UI.setUIState("waiting");
+  }
+  
+  /**
+   * Handle Twitch extension authorization
+   * @param {Object} auth - Authorization data from Twitch
+   */
 
-// ✅ Listen for Twitch PubSub Messages
-window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
-    console.log("📩 Received broadcast:", message);
+// In frontend/script.js - Improve handleAuthorization function
+/**
+ * Handle Twitch extension authorization
+ * @param {Object} auth - Authorization data from Twitch
+ */
+function handleAuthorization(auth) {
+  console.log("✅ Extension authorized with token:", auth.token.substring(0, 10) + "...");
+  TriviaState.userId = auth.userId;
+  
+  // Request identity sharing from the user
+  window.Twitch.ext.actions.requestIdShare();
+  
+  // Check if the extension has viewer info access
+  const hasViewerData = window.Twitch.ext.viewer && 
+                        window.Twitch.ext.viewer.id && 
+                        window.Twitch.ext.viewer.id === auth.userId;
+                        
+  console.log(`👤 Viewer data available: ${hasViewerData}`);
+  
+  // If we have direct access to the viewer's display name
+  if (hasViewerData && window.Twitch.ext.viewer.displayName) {
+    TriviaState.username = window.Twitch.ext.viewer.displayName;
+    console.log(`👤 Got username directly from viewer object: ${TriviaState.username}`);
+    
+    // Store in localStorage as backup
     try {
-        const data = JSON.parse(message);
-        console.log("📢 Parsed broadcast data:", data);
-
-        switch (data.type) {
-            case "SETTINGS_UPDATE":
-                console.log("⚙️ Updating Settings:", data);
-                triviaSettings.answerTime = data.answerTime || triviaSettings.answerTime;
-                triviaSettings.intervalTime = data.intervalTime || triviaSettings.intervalTime;
-                break;
-
-            case "TRIVIA_START":
-                console.log("🚀 Trivia has started!");
-                triviaActive = true;
-                // Use the intervalTime from settings or data
-                const intervalTime = data.intervalTime || triviaSettings.intervalTime || 600000;
-                nextQuestionTime = Date.now() + intervalTime;
-                setUIState("countdown");
-                updateCountdown(intervalTime);
-                break;
-
-            case "TRIVIA_QUESTION":
-                console.log("🎯 TRIVIA_QUESTION received!");
-                questionRequested = false; // Reset request flag
-                displayQuestion(data);
-                break;
-
-            case "COUNTDOWN_UPDATE":
-                console.log(`⏳ COUNTDOWN_UPDATE: ${Math.round(data.timeRemaining / 1000)}s remaining`);
-                // Set flag to prevent local updates conflicting with server updates
-                countdownUpdatedByPubSub = true;
-                nextQuestionTime = Date.now() + data.timeRemaining;
-                updateCountdown(data.timeRemaining);
-                
-                // Reset the flag after a delay
-                setTimeout(() => {
-                    countdownUpdatedByPubSub = false;
-                }, 2000);
-                break;
-
-            case "TRIVIA_END":
-                console.log("⛔ Trivia has been ended by the broadcaster.");
-                triviaActive = false;
-                nextQuestionTime = null;
-                setUIState("ended");
-                break;
-
-            default:
-                console.warn("⚠️ Unknown broadcast type:", data.type);
-                break;
-        }
-    } catch (err) {
-        console.error("❌ Error parsing broadcast message:", err);
-    }
-});
-
-// Update fetchUserScore function to handle both scores
-function fetchUserScore(userId) {
-    if (!userId) {
-        console.warn("⚠ Cannot fetch score: User ID is missing");
-        return;
+      localStorage.setItem('twitchUsername', TriviaState.username);
+      localStorage.setItem('twitchUserId', TriviaState.userId);
+      console.log("💾 Stored username in localStorage");
+    } catch (e) {
+      console.warn("⚠️ Could not store username in localStorage");
     }
     
-    console.log(`📊 Fetching score for user: ${userId}`);
+    // Send username to server
+    UserManager.sendUsername();
+  } 
+  // Check if we have an identity link (opaqueId different from userId)
+  else if (auth.userId !== auth.clientId && auth.channelId) {
+    console.log("🔗 User appears to have identity link - sending data to server for resolution");
     
-    fetch(`/score/${userId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Server returned ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log(`🏆 Retrieved user scores from server:`, data);
-            // Update both scores in the UI
-            displayScores(data.totalScore || 0, data.sessionScore || 0);
-        })
-        .catch(error => {
-            console.error("❌ Error fetching user score:", error);
-            // Still display zeros on error
-            displayScores(0, 0);
-        });
-}
-
-// ✅ Improved countdown update function
-function updateCountdown(timeRemaining) {
-    if (!countdownTimer || isNaN(timeRemaining) || timeRemaining <= 0) {
-        if (countdownTimer) {
-            countdownTimer.textContent = "0:00";
-        }
-        return;
-    }
-    
-    // Format time as MM:SS
-    let minutes = Math.floor(timeRemaining / 60000);
-    let seconds = Math.floor((timeRemaining % 60000) / 1000);
-    
-    countdownTimer.style.display = "inline";
-    countdownTimer.textContent = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-}
-
-// ✅ Improved interval timer for checking question timing
-setInterval(() => {
-    // Skip if trivia isn't active or if PubSub recently updated the countdown
-    if (!triviaActive || !nextQuestionTime || countdownUpdatedByPubSub) {
-        return;
-    }
-
-    const now = Date.now();
-    const timeRemaining = nextQuestionTime - now;
-
-    // Update the local countdown
-    updateCountdown(timeRemaining);
-
-    // Check if it's time to request the next question
-    if (timeRemaining <= 0 && !questionRequested) {
-        console.log("⏳ Countdown reached 0! Requesting next question...");
-        questionRequested = true;
-        
-        fetch("/get-next-question")
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    console.warn(`⚠️ ${data.error}`);
-                    // Reset the request flag after a short delay to prevent spam
-                    setTimeout(() => {
-                        questionRequested = false;
-                    }, 5000);
-                    return;
-                }
-                
-                // If we got a valid question, display it
-                displayQuestion(data);
-            })
-            .catch(error => {
-                console.error("❌ Error fetching next question:", error);
-                // Reset the request flag to allow retry
-                setTimeout(() => {
-                    questionRequested = false;
-                }, 5000);
-            });
-    }
-}, 1000);
-
-// ✅ Improved displayQuestion function
-function displayQuestion(data) {
-    console.log("📢 displayQuestion() called with data:", data);
-    
-    if (!data.question || !data.choices || !data.correctAnswer) {
-        console.error("❌ Missing required trivia data fields:", data);
-        return;
-    }
-
-    // Calculate duration with fallback
-    const duration = data.duration || triviaSettings.answerTime || 30000;
-    
-    // Store current question information globally
-    currentQuestionDifficulty = data.difficulty || 'Medium';
-    currentQuestionDuration = duration;
-    
-    triviaActive = true;
-    questionStartTime = Date.now();
-    questionRequested = false; // Reset flag
-    
-    // Update UI
-    questionText.textContent = data.question;
-    choicesContainer.innerHTML = "";
-    
-    // Reset timer bar
-    timerBar.style.transition = "none";
-    timerBar.style.width = "100%";
-
-    // Remove any existing difficulty indicators
-    const existingIndicators = document.querySelectorAll('.difficulty-indicator');
-    existingIndicators.forEach(indicator => indicator.remove());
-
-    // Add difficulty indicator if available
-    if (data.difficulty) {
-        const difficultyIndicator = document.createElement("div");
-        difficultyIndicator.className = "difficulty-indicator " + data.difficulty.toLowerCase();
-        difficultyIndicator.textContent = data.difficulty;
-        questionText.parentNode.insertBefore(difficultyIndicator, questionText);
-    }
-
-    // Create buttons for each choice
-    data.choices.forEach((choice) => {
-        const button = document.createElement("button");
-        button.classList.add("choice-button");
-        button.textContent = choice;
-        button.onclick = () => selectAnswer(button, choice, data.correctAnswer);
-        choicesContainer.appendChild(button);
-    });
-
-    // Start timer animation
-    setTimeout(() => {
-        timerBar.style.transition = `width ${duration / 1000}s linear`;
-        timerBar.style.width = "0%";
-    }, 100);
-
-    // Show the question screen
-    setUIState("question");
-    
-    // Start the answer timer
-    startTriviaTimer(duration, data.correctAnswer);
-}
-
-// ✅ Improved transitionToCountdown function
-function transitionToCountdown(intervalTime) {
-    console.log("🎭 Transitioning to countdown screen...");
-    
-    // Validate interval time with fallbacks
-    if (!intervalTime || isNaN(intervalTime)) {
-        intervalTime = triviaSettings.intervalTime || 600000; // Default to 10 minutes
-    }
-    
-    triviaActive = true;
-    nextQuestionTime = Date.now() + intervalTime;
-    
-    // Set UI state and start countdown
-    setUIState("countdown");
-    updateCountdown(intervalTime);
-}
-
-// ✅ Improved startTriviaTimer function
-function startTriviaTimer(duration, correctAnswer) {
-    console.log(`⏳ Starting trivia timer for duration: ${duration}ms`);
-    
-    // Use the current question timestamp to verify timer validity
-    const currentQuestionTime = questionStartTime;
-    
-    setTimeout(() => {
-        // Check if we're still showing the same question
-        if (questionStartTime !== currentQuestionTime) {
-            console.log("⚠️ Question changed, not revealing answers");
-            return;
-        }
-        
-        console.log("⌛ Time's up! Revealing correct answer...");
-        
-        // Mark correct and incorrect answers
-        const buttons = document.querySelectorAll(".choice-button");
-        buttons.forEach((btn) => {
-            if (btn.textContent === correctAnswer) {
-                btn.classList.add("correct");
-            } else if (btn.dataset.selected === "true") {
-                btn.classList.remove("selected");
-                btn.classList.add("wrong");
-            } else {
-                btn.classList.add("wrong");
-            }
-            btn.disabled = true;
-        });
-
-        // Now that timer has ended, show points info if we have it
-        if (lastAnswerData && lastAnswerData.pointsEarned > 0) {
-            const pointsInfo = document.createElement("div");
-            pointsInfo.className = "points-info";
-            pointsInfo.innerHTML = `
-                <span class="points">+${lastAnswerData.pointsEarned} points!</span>
-                <span class="time-bonus">${lastAnswerData.timePercentage}% time bonus</span>
-            `;
-            lastAnswerData.button.parentNode.appendChild(pointsInfo);
-            
-            // Clear the data after using it
-            lastAnswerData = null;
-        }
-
-        console.log("🔄 Returning to countdown screen in 5 seconds...");
-
-        // After 5 seconds, transition back to countdown screen
-        setTimeout(() => {
-            // Transition to countdown with next interval
-            const nextInterval = triviaSettings.intervalTime || 600000;
-            transitionToCountdown(nextInterval);
-        }, 5000);
-    }, duration);
-}
-
-// Update displayScore to handle both total and session scores
-function displayScores(totalScore, sessionScore) {
-    // Find or create score elements
-    const scoreContainer = document.getElementById("user-score");
-    
-    if (scoreContainer) {
-        // Format scores nicely
-        const formattedTotal = Number(totalScore).toLocaleString();
-        const formattedSession = Number(sessionScore).toLocaleString();
-        
-        // Create HTML with both scores
-        scoreContainer.innerHTML = `
-            <div class="total-score">Total Score: ${formattedTotal}</div>
-            <div class="session-score">Session Score: ${formattedSession}</div>
-        `;
-        
-        console.log(`🏆 Scores updated: Total=${formattedTotal}, Session=${formattedSession}`);
-    } else {
-        console.error("❌ Score container not found!");
-        
-        // Try again after a short delay
-        setTimeout(() => {
-            const retryElement = document.getElementById("user-score");
-            if (retryElement) {
-                const formattedTotal = Number(totalScore).toLocaleString();
-                const formattedSession = Number(sessionScore).toLocaleString();
-                
-                retryElement.innerHTML = `
-                    <div class="total-score">Total Score: ${formattedTotal}</div>
-                    <div class="session-score">Session Score: ${formattedSession}</div>
-                `;
-                console.log(`🏆 Scores updated on retry: Total=${totalScore}, Session=${sessionScore}`);
-            }
-        }, 500);
-    }
-}
-
-
-// Update selectAnswer function to handle both scores
-function selectAnswer(button, selectedChoice, correctAnswer) {
-    if (!userId) {
-        console.warn("⚠ User ID missing. Cannot track score.");
-        return;
-    }
-    
-    console.log("User selected:", selectedChoice, " | Correct answer:", correctAnswer);
-    
-    // Disable all buttons to prevent multiple selections
-    const buttons = document.querySelectorAll(".choice-button");
-    buttons.forEach((btn) => btn.disabled = true);
-    
-    // Mark the selected button
-    button.classList.add("selected");
-    button.dataset.selected = "true";
-    button.dataset.isCorrect = selectedChoice === correctAnswer ? "true" : "false";
-
-    // Calculate response time
-    const answerTime = Date.now() - questionStartTime;
-    console.log(`📩 User ${userId} answered in ${answerTime}ms (Difficulty: ${currentQuestionDifficulty})`);
-
-    // Submit answer to server
-    fetch("/submit-answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            userId,
-            selectedAnswer: selectedChoice,
-            correctAnswer,
-            answerTime,
-            difficulty: currentQuestionDifficulty,
-            duration: currentQuestionDuration
-        }),
+    // Send auth data to server for possible API resolution
+    fetch(`${TriviaState.getApiBaseUrl()}/extension-identity`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${auth.token}` // Include the JWT token
+      },
+      body: JSON.stringify({
+        userId: auth.userId,
+        channelId: auth.channelId,
+        clientId: auth.clientId,
+        token: auth.token
+      })
     })
     .then(response => response.json())
     .then(data => {
-        console.log("🏆 Score updated!", data);
-        // Update both scores
-        displayScores(data.totalScore || 0, data.sessionScore || 0);
+      if (data.username) {
+        console.log(`👤 Server resolved username: ${data.username}`);
+        TriviaState.username = data.username;
         
-        // Store the answer data for later display when timer ends
-        if (data.pointsEarned > 0) {
-            lastAnswerData = {
-                button: button,
-                pointsEarned: data.pointsEarned,
-                timePercentage: data.timePercentage
-            };
+        // Store resolved username
+        try {
+          localStorage.setItem('twitchUsername', TriviaState.username);
+          localStorage.setItem('twitchUserId', TriviaState.userId);
+        } catch (e) {
+          // Ignore localStorage errors
         }
+      }
     })
-    .catch(error => console.error("❌ Error submitting answer:", error));
+    .catch(error => console.error("❌ Error with identity resolution:", error));
+  }
+  // Try to recover from localStorage as last resort
+  else {
+    try {
+      const storedUsername = localStorage.getItem('twitchUsername');
+      const storedUserId = localStorage.getItem('twitchUserId');
+      
+      if (storedUsername && storedUserId === TriviaState.userId) {
+        TriviaState.username = storedUsername;
+        console.log("👤 Restored username from localStorage:", TriviaState.username);
+        
+        // Send recovered username to server
+        UserManager.sendUsername();
+      } else {
+        console.log("⚠️ No username available from any source");
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+  }
+  
+  // Always fetch score regardless of username status
+  UserManager.fetchUserScore();
 }
+  
+  /**
+   * Process broadcast messages from Twitch PubSub
+   * @param {string} target - Target of the broadcast
+   * @param {string} contentType - Content type of the message
+   * @param {string} message - JSON message string
+   */
+  function handleBroadcastMessage(target, contentType, message) {
+    try {
+      const data = JSON.parse(message);
+      console.log("📢 Received broadcast:", data.type);
+      
+      switch (data.type) {
+        case "SETTINGS_UPDATE":
+          handleSettingsUpdate(data);
+          break;
+          
+        case "TRIVIA_START":
+          handleTriviaStart(data);
+          break;
+          
+        case "TRIVIA_QUESTION":
+          handleTriviaQuestion(data);
+          break;
+          
+        case "COUNTDOWN_UPDATE":
+          handleCountdownUpdate(data);
+          break;
+          
+        case "TRIVIA_END":
+          handleTriviaEnd();
+          break;
+          
+        default:
+          console.warn("⚠️ Unknown broadcast type:", data.type);
+      }
+    } catch (err) {
+      console.error("❌ Error processing broadcast:", err);
+    }
+  }
+  
+  // ======================================================
+  // 3. BROADCAST MESSAGE HANDLERS
+  // ======================================================
+  
+  /**
+   * Handle settings update message
+   * @param {Object} data - Settings data
+   */
+  function handleSettingsUpdate(data) {
+    console.log("⚙️ Updating settings:", data);
+    TriviaState.settings.answerTime = data.answerTime || TriviaState.settings.answerTime;
+    TriviaState.settings.intervalTime = data.intervalTime || TriviaState.settings.intervalTime;
+  }
+  
+  /**
+   * Handle trivia start message
+   * @param {Object} data - Trivia start data
+   */
+  function handleTriviaStart(data) {
+    console.log("🚀 Trivia has started!");
+    TriviaState.triviaActive = true;
+    
+    // Set next question time
+    const intervalTime = data.intervalTime || TriviaState.settings.intervalTime;
+    TriviaState.nextQuestionTime = Date.now() + intervalTime;
+    
+    // Update UI
+    UI.setUIState("countdown");
+    TimerManager.updateCountdown(intervalTime);
+  }
+  
+ /**
+ * Handle trivia question message with duplicate detection
+ * @param {Object} data - Question data
+ */
+function handleTriviaQuestion(data) {
+  console.log("🎯 Received trivia question");
+  
+  // Track the last question timestamp to detect duplicates
+  if (!TriviaState.lastQuestionTimestamp) {
+    TriviaState.lastQuestionTimestamp = 0;
+  }
+  
+  // Check for duplicate question based on timestamp
+  if (data.timestamp && data.timestamp <= TriviaState.lastQuestionTimestamp) {
+    console.warn(`⚠️ Detected duplicate question (timestamp: ${data.timestamp}). Ignoring.`);
+    return;
+  }
+  
+  // Update the last question timestamp
+  if (data.timestamp) {
+    TriviaState.lastQuestionTimestamp = data.timestamp;
+  }
+  
+  // Reset request flag and display the question
+  TriviaState.questionRequested = false;
+  QuestionManager.displayQuestion(data);
+}
+  
+  /**
+   * Handle trivia end message
+   */
+  function handleTriviaEnd() {
+    console.log("⛔ Trivia has ended");
+    TriviaState.triviaActive = false;
+    TriviaState.nextQuestionTime = null;
+    UI.setUIState("ended");
+  }
+  
+  // ======================================================
+  // 4. UI MANAGEMENT
+  // ======================================================
+  
+  /**
+   * UI management methods
+   */
+  UI.setUIState = function(state) {
+    console.log(`🎭 Setting UI state to: ${state}`);
+    
+    // Hide all screens first
+    this.waitingScreen.style.display = "none";
+    this.quizContainer.style.display = "none";
+    this.endedScreen.style.display = "none";
+    
+    // Show appropriate screen based on state
+    switch (state) {
+      case "waiting":
+        this.waitingScreen.style.display = "flex";
+        this.waitingText.textContent = "Trivia has not started yet.";
+        this.countdownTimer.style.display = "none";
+        break;
+        
+      case "countdown":
+        this.waitingScreen.style.display = "flex";
+        this.waitingText.textContent = "Next question in:";
+        this.countdownTimer.style.display = "inline";
+        break;
+        
+      case "question":
+        this.quizContainer.style.display = "flex";
+        break;
+        
+      case "ended":
+        this.endedScreen.style.display = "block";
+        break;
+    }
+  };
+  
+  // ======================================================
+  // 5. USER MANAGEMENT
+  // ======================================================
+  
+  /**
+   * User data and score management
+   */
+  const UserManager = {
+    /**
+     * Send username to server for tracking
+     */
+    sendUsername() {
+      if (!TriviaState.userId || !TriviaState.username) {
+        console.warn("⚠️ Missing userId or username");
+        return;
+      }
+      
+      console.log(`👤 Sending username to server: ${TriviaState.username}`);
+      
+      // Store in localStorage as well for persistence
+      try {
+        localStorage.setItem('twitchUsername', TriviaState.username);
+        localStorage.setItem('twitchUserId', TriviaState.userId);
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      
+      fetch(`${TriviaState.getApiBaseUrl()}/api/set-username`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: TriviaState.userId,
+          username: TriviaState.username
+        })
+      })
+      .then(response => response.json())
+      .then(data => console.log("✅ Username sent successfully"))
+      .catch(error => console.error("❌ Error sending username:", error));
+    },
 
-// Initialize UI in waiting state
-setUIState("waiting");
+    /**
+     * Fetch user's score from server
+     */
+    fetchUserScore() {
+      if (!TriviaState.userId) {
+        console.warn("⚠️ Cannot fetch score: User ID is missing");
+        return;
+      }
+      
+      console.log(`📊 Fetching score for user: ${TriviaState.userId}`);
+      
+      fetch(`${TriviaState.getApiBaseUrl()}/score/${TriviaState.userId}`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log(`🏆 Retrieved user scores:`, data);
+          this.displayScores(data.totalScore || 0, data.sessionScore || 0);
+        })
+        .catch(error => {
+          console.error("❌ Error fetching user score:", error);
+          this.displayScores(0, 0);
+        });
+    },
+    
+    /**
+     * Display user scores in UI
+     * @param {number} totalScore - User's total score
+     * @param {number} sessionScore - User's session score
+     */
+    displayScores(totalScore, sessionScore) {
+      if (!UI.userScore) {
+        console.error("❌ Score container not found");
+        return;
+      }
+      
+      // Format scores for display
+      const formattedTotal = Number(totalScore).toLocaleString();
+      const formattedSession = Number(sessionScore).toLocaleString();
+      
+      // Update DOM
+      UI.userScore.innerHTML = `
+        <div class="total-score">Total Score: ${formattedTotal}</div>
+        <div class="session-score">Session Score: ${formattedSession}</div>
+      `;
+      
+      console.log(`🏆 Scores updated: Total=${formattedTotal}, Session=${formattedSession}`);
+    },
+    
+    /**
+     * Submit answer to server
+     * @param {HTMLElement} button - Button element that was clicked
+     * @param {string} selectedChoice - User's selected answer
+     * @param {string} correctAnswer - Correct answer
+     */
+    submitAnswer(button, selectedChoice, correctAnswer) {
+      if (!TriviaState.userId) {
+        console.warn("⚠️ User ID missing. Cannot track score.");
+        return;
+      }
+      
+      // Calculate answer time
+      const answerTime = Date.now() - TriviaState.questionStartTime;
+      
+      // Prepare answer data
+      const answerData = {
+        userId: TriviaState.userId,
+        username: TriviaState.username || null,
+        selectedAnswer: selectedChoice,
+        correctAnswer: correctAnswer,
+        answerTime: answerTime,
+        difficulty: TriviaState.currentQuestionDifficulty,
+        duration: TriviaState.currentQuestionDuration
+      };
+      
+      console.log("📤 Submitting answer:", answerData);
+      
+      // Send answer to server
+      fetch(`${TriviaState.getApiBaseUrl()}/submit-answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(answerData)
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log("🏆 Score updated:", data);
+        
+        // Update scores
+        this.displayScores(data.totalScore || 0, data.sessionScore || 0);
+        
+        // Store answer data for display when timer ends
+        if (data.pointsEarned > 0) {
+          TriviaState.lastAnswerData = {
+            button: button,
+            pointsEarned: data.pointsEarned,
+            timePercentage: data.timePercentage
+          };
+        }
+      })
+      .catch(error => {
+        console.error("❌ Error submitting answer:", error);
+      });
+    }
+  };
+  
+  // ======================================================
+  // 6. QUESTION MANAGEMENT
+  // ======================================================
+  
+  /**
+   * Question display and answer handling
+   */
+  const QuestionManager = {
+    /**
+     * Display trivia question in UI
+     * @param {Object} data - Question data
+     */
+    displayQuestion(data) {
+      if (!data.question || !data.choices || !data.correctAnswer) {
+        console.error("❌ Missing required question data:", data);
+        TriviaState.questionRequested = false;
+        return;
+      }
+      
+      // Calculate duration with fallback
+      const duration = data.duration || TriviaState.settings.answerTime || 30000;
+      
+      // Update global state
+      TriviaState.questionStartTime = Date.now();
+      TriviaState.currentQuestionDifficulty = data.difficulty || 'Medium';
+      TriviaState.currentQuestionDuration = duration;
+      TriviaState.triviaActive = true;
+      TriviaState.questionRequested = false;
+      
+      // Update question text
+      UI.questionText.textContent = data.question;
+      UI.choicesContainer.innerHTML = "";
+      
+      // Reset timer bar
+      UI.timerBar.style.transition = "none";
+      UI.timerBar.style.width = "100%";
+      
+      // Remove existing difficulty indicators
+      document.querySelectorAll('.difficulty-indicator').forEach(el => el.remove());
+      
+      // Add difficulty indicator if available
+      if (data.difficulty) {
+        const difficultyIndicator = document.createElement("div");
+        difficultyIndicator.className = "difficulty-indicator " + data.difficulty.toLowerCase();
+        difficultyIndicator.textContent = data.difficulty;
+        UI.questionText.parentNode.insertBefore(difficultyIndicator, UI.questionText);
+      }
+      
+      // Create buttons for each choice
+      data.choices.forEach(choice => {
+        const button = document.createElement("button");
+        button.classList.add("choice-button");
+        button.textContent = choice;
+        button.onclick = () => this.handleAnswerSelection(button, choice, data.correctAnswer);
+        UI.choicesContainer.appendChild(button);
+      });
+      
+      // Start timer animation after a short delay
+      setTimeout(() => {
+        UI.timerBar.style.transition = `width ${duration / 1000}s linear`;
+        UI.timerBar.style.width = "0%";
+      }, 100);
+      
+      // Show question UI
+      UI.setUIState("question");
+      
+      // Start timer for question
+      TimerManager.startQuestionTimer(duration, data.correctAnswer);
+    },
+    
+    /**
+     * Handle user answer selection
+     * @param {HTMLElement} button - Button that was clicked
+     * @param {string} selectedChoice - Selected answer text
+     * @param {string} correctAnswer - Correct answer text
+     */
+    handleAnswerSelection(button, selectedChoice, correctAnswer) {
+      // Disable all buttons to prevent multiple selections
+      document.querySelectorAll(".choice-button").forEach(btn => btn.disabled = true);
+      
+      // Mark selected button
+      button.classList.add("selected");
+      button.dataset.selected = "true";
+      
+      // Submit answer to server
+      UserManager.submitAnswer(button, selectedChoice, correctAnswer);
+    },
+    
+    /**
+     * Reveal correct answer
+     * @param {string} correctAnswer - Correct answer text
+     */
+    revealCorrectAnswer(correctAnswer) {
+      const buttons = document.querySelectorAll(".choice-button");
+      
+      // Mark each button as correct or wrong
+      buttons.forEach(btn => {
+        if (btn.textContent === correctAnswer) {
+          btn.classList.add("correct");
+        } else if (btn.dataset.selected === "true") {
+          btn.classList.remove("selected");
+          btn.classList.add("wrong");
+        } else {
+          btn.classList.add("wrong");
+        }
+        btn.disabled = true;
+      });
+      
+      // Show points info if we have it
+      if (TriviaState.lastAnswerData && TriviaState.lastAnswerData.pointsEarned > 0) {
+        const pointsInfo = document.createElement("div");
+        pointsInfo.className = "points-info";
+        pointsInfo.innerHTML = `
+          <span class="points">+${TriviaState.lastAnswerData.pointsEarned} points!</span>
+          <span class="time-bonus">${TriviaState.lastAnswerData.timePercentage}% time bonus</span>
+        `;
+        TriviaState.lastAnswerData.button.parentNode.appendChild(pointsInfo);
+        
+        // Clear the data
+        TriviaState.lastAnswerData = null;
+      }
+    }
+  };
+  
+  // ======================================================
+  // 7. TIMER MANAGEMENT
+  // ======================================================
+  
+  /**
+   * Countdown and timer management
+   */
+  const TimerManager = {
+    /**
+     * Update countdown display
+     * @param {number} timeRemaining - Time remaining in milliseconds
+     */
+    updateCountdown(timeRemaining) {
+      if (!UI.countdownTimer || isNaN(timeRemaining) || timeRemaining <= 0) {
+        if (UI.countdownTimer) {
+          UI.countdownTimer.textContent = "0:00";
+        }
+        return;
+      }
+      
+      // Format time as MM:SS
+      const minutes = Math.floor(timeRemaining / 60000);
+      const seconds = Math.floor((timeRemaining % 60000) / 1000);
+      
+      UI.countdownTimer.style.display = "inline";
+      UI.countdownTimer.textContent = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+    },
+    
+    /**
+     * Start timer for current question
+     * @param {number} duration - Duration in milliseconds
+     * @param {string} correctAnswer - Correct answer text
+     */
+    startQuestionTimer(duration, correctAnswer) {
+      // Store current question timestamp to verify timer validity later
+      const currentQuestionTime = TriviaState.questionStartTime;
+      
+      setTimeout(() => {
+        // Check if we're still showing the same question
+        if (TriviaState.questionStartTime !== currentQuestionTime) {
+          console.log("⚠️ Question changed, not revealing answers");
+          return;
+        }
+        
+        console.log("⌛ Time's up! Revealing correct answer");
+        
+        // Reveal answer
+        QuestionManager.revealCorrectAnswer(correctAnswer);
+        
+        // Schedule transition back to countdown
+        setTimeout(() => {
+          const nextInterval = TriviaState.settings.intervalTime || 600000;
+          this.transitionToCountdown(nextInterval);
+        }, 5000);
+      }, duration);
+    },
+    
+    /**
+     * Transition to countdown screen
+     * @param {number} intervalTime - Interval time in milliseconds
+     */
+    transitionToCountdown(intervalTime) {
+      // Validate interval time with fallbacks
+      if (!intervalTime || isNaN(intervalTime)) {
+        intervalTime = TriviaState.settings.intervalTime || 600000;
+      }
+      
+      // Update state
+      TriviaState.triviaActive = true;
+      TriviaState.nextQuestionTime = Date.now() + intervalTime;
+      
+      // Update UI
+      UI.setUIState("countdown");
+      this.updateCountdown(intervalTime);
+    },
+    
+    /**
+     * Check if it's time to request the next question
+     */
+    checkForNextQuestion() {
+      // Skip if trivia isn't active or if PubSub updated countdown
+      if (!TriviaState.triviaActive || !TriviaState.nextQuestionTime || TriviaState.countdownUpdatedByPubSub) {
+        return;
+      }
+      
+      const timeRemaining = TriviaState.nextQuestionTime - Date.now();
+      
+      // Update local countdown
+      this.updateCountdown(timeRemaining);
+      
+      // Request next question when time is up
+      if (timeRemaining <= 0 && !TriviaState.questionRequested) {
+        console.log("⏳ Countdown reached 0! Requesting next question");
+        TriviaState.questionRequested = true;
+        
+        fetch(`${TriviaState.getApiBaseUrl()}/get-next-question`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.error) {
+              console.warn(`⚠️ ${data.error}`);
+              // Reset request flag after delay to prevent spam
+              setTimeout(() => {
+                TriviaState.questionRequested = false;
+              }, 5000);
+              return;
+            }
+            
+            // Display question if valid
+            QuestionManager.displayQuestion(data);
+          })
+          .catch(error => {
+            console.error("❌ Error fetching next question:", error);
+            // Reset request flag after delay
+            setTimeout(() => {
+              TriviaState.questionRequested = false;
+            }, 5000);
+          });
+      }
+    }
+  };
+
+  /**
+   * Handle countdown update message
+   * @param {Object} data - Countdown data with timeRemaining
+   */
+  function handleCountdownUpdate(data) {
+    console.log("⏱️ Received countdown update");
+    
+    if (!data.timeRemaining && data.timeRemaining !== 0) {
+      console.warn("⚠️ Missing timeRemaining in countdown update");
+      return;
+    }
+    
+    // Update countdown flag to prevent duplicate updates
+    TriviaState.countdownUpdatedByPubSub = true;
+    
+    // Update nextQuestionTime based on the timeRemaining from server
+    TriviaState.nextQuestionTime = Date.now() + data.timeRemaining;
+    
+    // Update the UI with the new time
+    UI.setUIState("countdown");
+    TimerManager.updateCountdown(data.timeRemaining);
+    
+    // Reset flag after a short delay to allow local updates again
+    setTimeout(() => {
+      TriviaState.countdownUpdatedByPubSub = false;
+    }, 2000);
+  }
+
+  /**
+   * Handle trivia end message
+   */
+  function handleTriviaEnd() {
+    console.log("⛔ Trivia has ended");
+    TriviaState.triviaActive = false;
+    TriviaState.nextQuestionTime = null;
+    UI.setUIState("ended");
+  }
+  
+  // ======================================================
+  // 8. INITIALIZATION & EVENT LISTENERS
+  // ======================================================
+  
+  // Set up timer check interval
+  setInterval(() => {
+    TimerManager.checkForNextQuestion();
+  }, 1000);
+  
+  // Initialize UI
+  document.addEventListener("DOMContentLoaded", () => {
+    console.log("🚀 Initializing Loremaster Trivia Extension");
+    initializeTwitchExtension();
+  });

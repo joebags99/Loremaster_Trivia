@@ -488,6 +488,7 @@ function handleTriviaQuestion(data) {
     displayQuestion(data) {
       if (!data.question || !data.choices || !data.correctAnswer) {
         console.error("❌ Missing required question data:", data);
+        TriviaState.questionRequested = false;
         return;
       }
       

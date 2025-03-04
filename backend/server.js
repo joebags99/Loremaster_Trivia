@@ -1003,6 +1003,9 @@ const Score = sequelize.define("Score", {
  * @returns {Promise<boolean>} Success status
  */
 async function setUsername(userId, username) {
+  console.log('USER ID: ' + userId);
+  console.log('USERNAME: ' + username);
+  Console.log('HALSDFKHJLAKJDSHFLKJASHDFLKJADSLFKJLAKDFJLSAKDJFASDFA');
     if (!userId || !username) {
       console.warn("⚠️ Missing userId or username in setUsername");
       return false;

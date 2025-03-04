@@ -2318,9 +2318,29 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
         return res.json({ error: "Next question not ready yet.", timeRemaining });
       }
   
-      // Check for concurrent requests - add timestamp-based throttling
+      // === IMPROVED CONCURRENCY HANDLING ===
       const now = Date.now();
-      if (now - lastQuestionTimestamp < MIN_QUESTION_INTERVAL) {
+      
+      // Check if a question is already in progress
+      if (questionInProgress) {
+        console.log(`🔄 [${requestId}] Question already in progress - serving cached question`);
+        
+        // If we have a valid cached question and it's recent (within 10 seconds)
+        if (global.cachedQuestion && (now - global.cachedQuestionTimestamp) < 10000) {
+          return res.json(global.cachedQuestion);
+        }
+        
+        // Otherwise wait a bit and try again
+        console.warn(`⚠️ [${requestId}] No valid cached question available, waiting briefly`);
+        return res.json({ 
+          error: "Question generation in progress", 
+          message: "Please retry in a moment",
+          retry: true
+        });
+      }
+      
+      // Only check for "too recent" if we don't have a cached question to serve
+      if (now - lastQuestionTimestamp < MIN_QUESTION_INTERVAL && !global.cachedQuestion) {
         console.warn(`⚠️ [${requestId}] Question was sent too recently (${now - lastQuestionTimestamp}ms ago)! Preventing duplicate.`);
         return res.json({ 
           error: "Question was sent too recently", 
@@ -2328,12 +2348,6 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
           timeElapsed: now - lastQuestionTimestamp,
           minInterval: MIN_QUESTION_INTERVAL
         });
-      }
-  
-      // Prevent overlap with ongoing questions using both safeguards
-      if (questionInProgress) {
-        console.warn(`⚠️ [${requestId}] A question is already in progress!`);
-        return res.json({ error: "A question is already in progress." });
       }
   
       // At this point, we're ready to get a new question
@@ -2387,6 +2401,10 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
         global.currentQuestionTimeout = setTimeout(() => {
           console.log(`⏳ [${requestId}] Question round completed, resetting for next question`);
           questionInProgress = false;
+          // Clear cached question after the full duration
+          global.cachedQuestion = null;
+          global.cachedQuestionTimestamp = 0;
+          
           nextQuestionTime = Date.now() + (triviaSettings?.intervalTime || 600000);
         }, answerTime + 5000);
         
@@ -2402,19 +2420,38 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
           timestamp: now
         };
         
+        // Store the question in the global cache for other viewers who might request it
+        global.cachedQuestion = responseObj;
+        global.cachedQuestionTimestamp = now;
+        
         console.log(`📩 [${requestId}] Sending next trivia question: ID ${questionObj.id}`);
-        res.json(responseObj);
+        
+        // Also broadcast the question to all clients via PubSub
+        try {
+          const questionMessage = {
+            type: "TRIVIA_QUESTION",
+            ...responseObj
+          };
+          
+          broadcastToTwitch(EXT_OWNER_ID, questionMessage);
+        } catch (broadcastError) {
+          console.error(`❌ [${requestId}] Error broadcasting question:`, broadcastError);
+          // Continue anyway - clients can still get the question via direct request
+        }
+        
+        return res.json(responseObj);
       } catch (error) {
         console.error(`❌ [${requestId}] Error getting next question:`, error);
         // Release the lock on error
         questionInProgress = false;
-        res.status(500).json({ error: "Server error getting next question" });
+        global.cachedQuestion = null;
+        return res.status(500).json({ error: "Server error getting next question" });
       }
     } catch (error) {
       console.error("❌ Error in get-next-question endpoint:", error);
       // Always release the lock on error
       questionInProgress = false;
-      res.status(500).json({ error: "Server error" });
+      return res.status(500).json({ error: "Server error" });
     }
   });
   

@@ -692,31 +692,60 @@ function handleTriviaQuestion(data) {
         console.log("⏳ Countdown reached 0! Requesting next question");
         TriviaState.questionRequested = true;
         
-        fetch(`${TriviaState.getApiBaseUrl()}/get-next-question`)
-          .then(response => response.json())
-          .then(data => {
-            if (data.error) {
-              console.warn(`⚠️ ${data.error}`);
-              // Reset request flag after delay to prevent spam
+        this.requestQuestion();
+      }
+    },
+    
+    // Add this new method to TimerManager to handle question requests with retries
+    requestQuestion(retryCount = 0) {
+      if (retryCount > 3) {
+        console.error("❌ Maximum retry attempts reached for question request");
+        TriviaState.questionRequested = false;
+        return;
+      }
+      
+      fetch(`${TriviaState.getApiBaseUrl()}/get-next-question`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            console.warn(`⚠️ ${data.error}`);
+            
+            // Special handling for retry requests
+            if (data.retry) {
+              console.log("🔄 Server asked us to retry. Waiting briefly...");
               setTimeout(() => {
-                TriviaState.questionRequested = false;
-              }, 5000);
+                this.requestQuestion(retryCount + 1);
+              }, 1000); // Wait 1 second before retry
               return;
             }
             
-            // Display question if valid
-            QuestionManager.displayQuestion(data);
-          })
-          .catch(error => {
-            console.error("❌ Error fetching next question:", error);
-            // Reset request flag after delay
+            // Reset request flag after delay to prevent spam
             setTimeout(() => {
               TriviaState.questionRequested = false;
             }, 5000);
-          });
-      }
-    }
-  };
+            return;
+          }
+          
+          // Display question if valid
+          QuestionManager.displayQuestion(data);
+        })
+        .catch(error => {
+          console.error("❌ Error fetching next question:", error);
+          
+          // Retry on network errors
+          if (retryCount < 3) {
+            console.log(`🔄 Retrying question request (attempt ${retryCount + 1})...`);
+            setTimeout(() => {
+              this.requestQuestion(retryCount + 1);
+            }, 1000 * (retryCount + 1)); // Exponential backoff
+            return;
+          }
+          
+          // Reset request flag after delay
+          setTimeout(() => {
+            TriviaState.questionRequested = false;
+          }, 5000);
+        });
 
   /**
    * Handle countdown update message
@@ -755,6 +784,7 @@ function handleTriviaQuestion(data) {
     TriviaState.nextQuestionTime = null;
     UI.setUIState("ended");
   }
+}};
   
   // ======================================================
   // 8. INITIALIZATION & EVENT LISTENERS

@@ -234,35 +234,33 @@ const TriviaState = {
     TimerManager.updateCountdown(intervalTime);
   }
   
-  /**
-   * Handle trivia question message
-   * @param {Object} data - Question data
-   */
-  function handleTriviaQuestion(data) {
-    console.log("🎯 Received trivia question");
-    TriviaState.questionRequested = false;
-    QuestionManager.displayQuestion(data);
+ /**
+ * Handle trivia question message with duplicate detection
+ * @param {Object} data - Question data
+ */
+function handleTriviaQuestion(data) {
+  console.log("🎯 Received trivia question");
+  
+  // Track the last question timestamp to detect duplicates
+  if (!TriviaState.lastQuestionTimestamp) {
+    TriviaState.lastQuestionTimestamp = 0;
   }
   
-  /**
-   * Handle countdown update message
-   * @param {Object} data - Countdown data
-   */
-  function handleCountdownUpdate(data) {
-    console.log(`⏳ Countdown update: ${Math.round(data.timeRemaining / 1000)}s remaining`);
-    
-    // Mark countdown as updated by PubSub to prevent local updates
-    TriviaState.countdownUpdatedByPubSub = true;
-    TriviaState.nextQuestionTime = Date.now() + data.timeRemaining;
-    
-    // Update UI
-    TimerManager.updateCountdown(data.timeRemaining);
-    
-    // Reset flag after delay
-    setTimeout(() => {
-      TriviaState.countdownUpdatedByPubSub = false;
-    }, 2000);
+  // Check for duplicate question based on timestamp
+  if (data.timestamp && data.timestamp <= TriviaState.lastQuestionTimestamp) {
+    console.warn(`⚠️ Detected duplicate question (timestamp: ${data.timestamp}). Ignoring.`);
+    return;
   }
+  
+  // Update the last question timestamp
+  if (data.timestamp) {
+    TriviaState.lastQuestionTimestamp = data.timestamp;
+  }
+  
+  // Reset request flag and display the question
+  TriviaState.questionRequested = false;
+  QuestionManager.displayQuestion(data);
+}
   
   /**
    * Handle trivia end message

@@ -558,13 +558,17 @@ const Score = sequelize.define("Score", {
         return null;
       }
       
+      // Log truncated values for debugging
+      console.log(`🔍 Using Client ID: ${EXT_CLIENT_ID.substring(0, 5)}...`);
+      console.log(`🔍 Using Client Secret: ${CLIENT_SECRET ? CLIENT_SECRET.substring(0, 3) + '...' : 'MISSING'}`);
+      
       // Create proper form data
       const formData = new URLSearchParams();
       formData.append('client_id', EXT_CLIENT_ID);
       formData.append('client_secret', CLIENT_SECRET);
       formData.append('grant_type', 'client_credentials');
       
-      console.log(`🔍 Using Client ID: ${EXT_CLIENT_ID.substring(0, 5)}...`);
+      console.log("📤 Sending OAuth request to Twitch...");
       
       const response = await axios.post(
         'https://id.twitch.tv/oauth2/token',
@@ -574,8 +578,15 @@ const Score = sequelize.define("Score", {
         }
       );
   
-      console.log("✅ Twitch OAuth Token received successfully");
-      return response.data.access_token;
+      if (response.data && response.data.access_token) {
+        console.log("✅ Twitch OAuth Token received successfully");
+        console.log(`🔑 Token: ${response.data.access_token.substring(0, 10)}...`);
+        console.log(`⏳ Expires in: ${response.data.expires_in} seconds`);
+        return response.data.access_token;
+      } else {
+        console.error("❌ Twitch OAuth response missing access_token:", response.data);
+        return null;
+      }
     } catch (error) {
       console.error("❌ Error getting Twitch OAuth token:", error.response?.data || error.message);
       
@@ -776,8 +787,8 @@ const Score = sequelize.define("Score", {
         return;
       }
       
-      console.log(`🔍 Attempting to fetch usernames for ${validUserIds.length} IDs:`, 
-        validUserIds.slice(0, 5).join(', '), validUserIds.length > 5 ? '...' : '');
+      console.log(`🔍 Attempting to fetch usernames for ${validUserIds.length} IDs`);
+      console.log(`🔍 Sample IDs: ${validUserIds.slice(0, 3).join(', ')}${validUserIds.length > 3 ? '...' : ''}`);
       
       // Process in batches of 100 (Twitch API limit)
       const batchSize = 100;
@@ -792,16 +803,15 @@ const Score = sequelize.define("Score", {
         });
         
         console.log(`🔍 Fetching batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(validUserIds.length/batchSize)}`);
-        console.log(`🔍 First few IDs in this batch: ${batch.slice(0, 3).join(', ')}${batch.length > 3 ? '...' : ''}`);
         
         try {
-          // Make sure headers are correctly formatted
+          // Use correct Bearer format for Authorization header
           const response = await axios.get(
             `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
             {
               headers: {
-                'Client-ID': EXT_CLIENT_ID,
-                'Authorization': `Bearer ${token}`
+                'Client-ID': EXT_CLIENT_ID, 
+                'Authorization': `Bearer ${token}` // Ensure Bearer format is used
               }
             }
           );
@@ -812,6 +822,10 @@ const Score = sequelize.define("Score", {
             // Update cache with response data
             response.data.data.forEach(user => {
               userIdToUsername[user.id] = user.display_name;
+              
+              // Also update database
+              setUsername(user.id, user.display_name)
+                .catch(err => console.error(`❌ Error saving username to database: ${err.message}`));
             });
             
             // Log a few examples of what we got
@@ -831,11 +845,6 @@ const Score = sequelize.define("Score", {
             console.error('Status:', batchError.response.status);
             console.error('Headers:', JSON.stringify(batchError.response.headers));
             console.error('Data:', JSON.stringify(batchError.response.data));
-            
-            // If there's an issue with the IDs, log them for inspection
-            if (batchError.response.status === 400) {
-              console.error('Problem IDs in this batch:', batch.join(', '));
-            }
           }
         }
       }
@@ -1073,18 +1082,18 @@ async function setUsername(userId, username) {
       
       console.log(`🔍 Resolving Twitch username for ID: ${cleanId} using Helix API`);
       
-      // Call Twitch Helix API
+      // Call Twitch Helix API with correct Bearer format
       const response = await axios.get(`https://api.twitch.tv/helix/users?id=${cleanId}`, {
         headers: {
           "Client-Id": clientId,
-          "Authorization": `Extension ${helixToken}`
+          "Authorization": `Bearer ${helixToken}` // Changed from "Extension" to "Bearer"
         }
       });
       
       if (response.data && response.data.data && response.data.data.length > 0) {
         const displayName = response.data.data[0].display_name;
         console.log(`✅ Resolved Twitch username: ${displayName} for ID ${cleanId}`);
-        console.log('resolve twitch usernmae stuff here' + userId +  ' ' + displayName);
+        
         // Save to memory and database using existing function
         await setUsername(userId, displayName);
         
@@ -1095,10 +1104,17 @@ async function setUsername(userId, username) {
       }
     } catch (error) {
       console.error(`❌ Error resolving Twitch username:`, error.response?.data || error.message);
+      
+      // Add more detailed error logging
+      if (error.response) {
+        console.error('Status:', error.response.status);
+        console.error('Headers:', JSON.stringify(error.response.headers));
+        console.error('Data:', JSON.stringify(error.response.data));
+      }
+      
       return null;
     }
   }
-  
   /**
    * Get username for a user ID
    * @param {string} userId - The user ID to lookup
@@ -1595,105 +1611,126 @@ async function setUsername(userId, username) {
     }
   }
   
-  /**
-   * Send trivia question to channel
-   * @param {string} channelId - Channel ID to send question to
-   * @returns {Promise<boolean>} Success status
-   */
-  async function sendTriviaQuestion(channelId) {
-    if (!triviaActive) {
-      console.log("⏳ Trivia is inactive. Waiting for Start command.");
-      return false;
-    }
-  
-    if (questionInProgress) {
-      console.warn("⚠️ A question is already in progress! Skipping duplicate question.");
-      return false;
-    }
-  
-    try {
-      // Mark that a question is in progress
-      questionInProgress = true;
+  // Use a timestamp to track when questions were last sent to avoid duplicates
+let lastQuestionTimestamp = 0;
+const MIN_QUESTION_INTERVAL = 5000; // Minimum 5 seconds between questions
+
+/**
+ * Send trivia question to channel with improved concurrency control
+ * @param {string} channelId - Channel ID to send question to
+ * @returns {Promise<boolean>} Success status
+ */
+async function sendTriviaQuestion(channelId) {
+  // First check if trivia is active
+  if (!triviaActive) {
+    console.log("⏳ Trivia is inactive. Waiting for Start command.");
+    return false;
+  }
+
+  // Check for concurrent requests - add timestamp-based throttling
+  const now = Date.now();
+  if (now - lastQuestionTimestamp < MIN_QUESTION_INTERVAL) {
+    console.warn(`⚠️ Question was sent too recently (${now - lastQuestionTimestamp}ms ago)! Preventing duplicate.`);
+    return false;
+  }
+
+  // Double-check that no question is in progress
+  if (questionInProgress) {
+    console.warn("⚠️ A question is already in progress! Skipping duplicate question.");
+    return false;
+  }
+
+  // Acquire the lock using both timestamp and flag
+  lastQuestionTimestamp = now;
+  questionInProgress = true;
+
+  try {
+    console.log("🧠 Selecting a trivia question from the database...");
+    
+    // Get broadcaster's filter preferences
+    const filters = await getBroadcasterFilters(channelId);
+    
+    // Get a random question using filters
+    let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
+    
+    // If no question matches filters, try without filters
+    if (!questionObj) {
+      console.warn("⚠️ No questions match broadcaster filters, trying any question...");
+      questionObj = await getRandomQuestionFromDB();
       
-      console.log("🧠 Selecting a trivia question from the database...");
-      
-      // Get broadcaster's filter preferences
-      const filters = await getBroadcasterFilters(channelId);
-      
-      // Get a random question using filters
-      let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
-      
-      // If no question matches filters, try without filters
-      if (!questionObj) {
-        console.warn("⚠️ No questions match broadcaster filters, trying any question...");
-        questionObj = await getRandomQuestionFromDB();
-        
-        // If still no question, check if we have any in memory as fallback
-        if (!questionObj && triviaQuestions.length > 0) {
-          console.warn("⚠️ Falling back to in-memory questions");
-          questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
-        }
-        
-        // If we still have no question, we can't continue
-        if (!questionObj) {
-          console.error("❌ No trivia questions available!");
-          questionInProgress = false;
-          return false;
-        }
+      // If still no question, check if we have any in memory as fallback
+      if (!questionObj && triviaQuestions.length > 0) {
+        console.warn("⚠️ Falling back to in-memory questions");
+        questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
       }
       
-      // Shuffle the choices
-      const shuffledChoices = shuffleArray([...questionObj.choices]);
-  
-      // Get timing settings with fallbacks
-      const answerTime = triviaSettings?.answerTime || 30000; // Default 30s
-      const intervalTime = triviaSettings?.intervalTime || 600000; // Default 10 min
-  
-      console.log(`⏳ Current trivia settings → Answer Time: ${answerTime}ms, Interval: ${intervalTime}ms`);
-      console.log(`📝 Selected question: "${questionObj.question.substring(0, 50)}..." (ID: ${questionObj.id}, Category: ${questionObj.categoryId}, Difficulty: ${questionObj.difficulty})`);
-  
-      // Prepare question message
-      const questionMessage = {
-        type: "TRIVIA_QUESTION",
-        question: questionObj.question,
-        choices: shuffledChoices,
-        correctAnswer: questionObj.correctAnswer,
-        duration: answerTime,
-        categoryId: questionObj.categoryId,
-        difficulty: questionObj.difficulty,
-        questionId: questionObj.id
-      };
-      
-      console.log("📡 Broadcasting trivia question...");
-  
-      // Broadcast the question
-      const broadcastSuccess = await broadcastToTwitch(channelId, questionMessage);
-      
-      if (!broadcastSuccess) {
-        console.error("❌ Failed to broadcast question");
+      // If we still have no question, we can't continue
+      if (!questionObj) {
+        console.error("❌ No trivia questions available!");
         questionInProgress = false;
         return false;
       }
-  
-      console.log(`✅ Trivia question sent to channel ${channelId}`);
-  
-      // Set round end time and schedule the next question
-      triviaRoundEndTime = Date.now() + answerTime + 5000; // Extra 5s buffer
-  
-      // Schedule reset of question status and next question timing
-      setTimeout(() => {
-        questionInProgress = false;
-        nextQuestionTime = Date.now() + intervalTime; 
-        console.log(`⏳ Next trivia question in: ${intervalTime / 1000} seconds`);
-      }, answerTime + 5000);
-      
-      return true;
-    } catch (error) {
-      console.error("❌ Error sending trivia question:", error.response?.data || error.message);
-      questionInProgress = false; // Always reset the flag on error
+    }
+    
+    // Shuffle the choices
+    const shuffledChoices = shuffleArray([...questionObj.choices]);
+
+    // Get timing settings with fallbacks
+    const answerTime = triviaSettings?.answerTime || 30000; // Default 30s
+    const intervalTime = triviaSettings?.intervalTime || 600000; // Default 10 min
+
+    console.log(`⏳ Current trivia settings → Answer Time: ${answerTime}ms, Interval: ${intervalTime}ms`);
+    console.log(`📝 Selected question: "${questionObj.question.substring(0, 50)}..." (ID: ${questionObj.id}, Category: ${questionObj.categoryId}, Difficulty: ${questionObj.difficulty})`);
+
+    // Prepare question message with unique identifier to prevent duplication
+    const questionMessage = {
+      type: "TRIVIA_QUESTION",
+      question: questionObj.question,
+      choices: shuffledChoices,
+      correctAnswer: questionObj.correctAnswer,
+      duration: answerTime,
+      categoryId: questionObj.categoryId,
+      difficulty: questionObj.difficulty,
+      questionId: questionObj.id,
+      timestamp: now // Add timestamp to help clients identify duplicates
+    };
+    
+    console.log(`📡 Broadcasting trivia question (timestamp: ${now})...`);
+
+    // Broadcast the question
+    const broadcastSuccess = await broadcastToTwitch(channelId, questionMessage);
+    
+    if (!broadcastSuccess) {
+      console.error("❌ Failed to broadcast question");
+      questionInProgress = false;
       return false;
     }
+
+    console.log(`✅ Trivia question sent to channel ${channelId}`);
+
+    // Set round end time and schedule the next question
+    triviaRoundEndTime = now + answerTime + 5000; // Extra 5s buffer
+
+    // Schedule reset of question status and next question timing
+    // Use a clearable timeout to prevent race conditions
+    const questionTimeout = setTimeout(() => {
+      console.log("⏳ Question round completed, resetting for next question");
+      questionInProgress = false;
+      nextQuestionTime = Date.now() + intervalTime; 
+      console.log(`⏳ Next trivia question in: ${intervalTime / 1000} seconds`);
+    }, answerTime + 5000);
+    
+    // Store the timeout ID in case we need to cancel it (e.g., on trivia end)
+    global.currentQuestionTimeout = questionTimeout;
+    
+    return true;
+  } catch (error) {
+    console.error("❌ Error sending trivia question:", error.response?.data || error.message);
+    // Always reset flags on error
+    questionInProgress = false; 
+    return false;
   }
+}
   
   /**
    * Update trivia settings
@@ -2130,6 +2167,7 @@ app.post("/submit-answer", async (req, res) => {
   });
 
   // Endpoint to set broadcaster name
+// Endpoint to set broadcaster name
 app.post("/api/set-broadcaster-name", async (req, res) => {
   try {
     const { channelId, jwt } = req.body;
@@ -2177,48 +2215,63 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
         });
       }
       
-        // Use Helix API to get broadcaster info
-        const response = await axios.get(`https://api.twitch.tv/helix/users?id=${channelId}`, {
-          headers: {
-            'Client-ID': EXT_CLIENT_ID,
-            'Authorization': `Bearer ${twitchToken}`
-          }
-        });
-        
-        if (response.data && response.data.data && response.data.data.length > 0) {
-          const broadcasterInfo = response.data.data[0];
-          const displayName = broadcasterInfo.display_name;
-          
-          console.log(`✅ Resolved broadcaster name from API: ${displayName}`);
-          
-          // Store in our system
-          await setUsername(channelId, displayName);
-          
-          // Return success
-          return res.json({ 
-            success: true, 
-            displayName: displayName,
-            method: "api"
-          });
-        } else {
-          console.warn(`⚠️ Broadcaster ${channelId} not found in Twitch API`);
-          return res.json({ 
-            success: false, 
-            error: "Broadcaster not found" 
-          });
+      console.log(`🔑 Got Twitch API token: ${twitchToken.substring(0, 10)}...`);
+      console.log(`🔍 Looking up channel ID: ${channelId}`);
+      
+      // Use Helix API with correct Bearer format to get broadcaster info
+      const response = await axios.get(`https://api.twitch.tv/helix/users?id=${channelId}`, {
+        headers: {
+          'Client-ID': EXT_CLIENT_ID,
+          'Authorization': `Bearer ${twitchToken}` // Ensure Bearer format is used
         }
-      } catch (apiError) {
-        console.error("❌ Error looking up broadcaster via API:", apiError);
-        return res.status(500).json({ 
+      });
+      
+      console.log(`📊 API Response status: ${response.status}`);
+      
+      if (response.data && response.data.data && response.data.data.length > 0) {
+        const broadcasterInfo = response.data.data[0];
+        const displayName = broadcasterInfo.display_name;
+        
+        console.log(`✅ Resolved broadcaster name from API: ${displayName}`);
+        
+        // Store in our system
+        await setUsername(channelId, displayName);
+        
+        // Return success
+        return res.json({ 
+          success: true, 
+          displayName: displayName,
+          method: "api"
+        });
+      } else {
+        console.warn(`⚠️ Broadcaster ${channelId} not found in Twitch API`);
+        console.log('API response:', JSON.stringify(response.data));
+        return res.json({ 
           success: false, 
-          error: "API error" 
+          error: "Broadcaster not found" 
         });
       }
-    } catch (error) {
-      console.error("❌ Error in set-broadcaster-name endpoint:", error);
-      res.status(500).json({ error: "Server error" });
+    } catch (apiError) {
+      console.error("❌ Error looking up broadcaster via API:", apiError.response?.data || apiError.message);
+      
+      // Add more detailed error logging
+      if (apiError.response) {
+        console.error('Status:', apiError.response.status);
+        console.error('Headers:', JSON.stringify(apiError.response.headers));
+        console.error('Data:', JSON.stringify(apiError.response.data));
+      }
+      
+      return res.status(500).json({ 
+        success: false, 
+        error: "API error",
+        details: apiError.response?.data || apiError.message
+      });
     }
-  });
+  } catch (error) {
+    console.error("❌ Error in set-broadcaster-name endpoint:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
   // Handle broadcaster identity messages from Twitch PubSub
   app.post("/twitch/broadcaster-identity", async (req, res) => {
@@ -2288,67 +2341,118 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
   // Get next question
   app.get("/get-next-question", async (req, res) => {
     try {
+      const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+      console.log(`📝 [${requestId}] Received next question request`);
+      
       if (!triviaActive) {
-        console.log("⏳ Trivia is inactive. Skipping next question request.");
+        console.log(`⏳ [${requestId}] Trivia is inactive. Skipping next question request.`);
         return res.json({ error: "Trivia is not active." });
       }
   
       // Check if we need to wait before sending the next question
       const timeRemaining = nextQuestionTime - Date.now();
       if (timeRemaining > 0) {
-        console.log(`⏳ Next question not ready yet! Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
+        console.log(`⏳ [${requestId}] Next question not ready yet! Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
         return res.json({ error: "Next question not ready yet.", timeRemaining });
       }
   
-      // Prevent overlap with ongoing questions
+      // Check for concurrent requests - add timestamp-based throttling
+      const now = Date.now();
+      if (now - lastQuestionTimestamp < MIN_QUESTION_INTERVAL) {
+        console.warn(`⚠️ [${requestId}] Question was sent too recently (${now - lastQuestionTimestamp}ms ago)! Preventing duplicate.`);
+        return res.json({ 
+          error: "Question was sent too recently", 
+          message: "Please wait before requesting another question",
+          timeElapsed: now - lastQuestionTimestamp,
+          minInterval: MIN_QUESTION_INTERVAL
+        });
+      }
+  
+      // Prevent overlap with ongoing questions using both safeguards
       if (questionInProgress) {
-        console.warn("⚠️ A question is already in progress!");
+        console.warn(`⚠️ [${requestId}] A question is already in progress!`);
         return res.json({ error: "A question is already in progress." });
       }
   
-      // Get broadcaster filters
-      const filters = await getBroadcasterFilters(EXT_OWNER_ID);
+      // At this point, we're ready to get a new question
+      console.log(`🔍 [${requestId}] Getting next question from database...`);
       
-      // Get random question from database
-      let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
-      
-      // If no question matches filters, try without filters
-      if (!questionObj) {
-        console.warn("⚠️ No questions match broadcaster filters, trying any question...");
-        questionObj = await getRandomQuestionFromDB();
+      // Acquire the lock immediately to prevent race conditions
+      lastQuestionTimestamp = now;
+      questionInProgress = true;
+  
+      try {
+        // Get broadcaster filters
+        const filters = await getBroadcasterFilters(EXT_OWNER_ID);
         
-        // If still no question, check in-memory as fallback
-        if (!questionObj && triviaQuestions.length > 0) {
-          console.warn("⚠️ Falling back to in-memory questions");
-          questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
-        }
+        // Get random question from database
+        let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
         
-        // If we still have no question, return error
+        // If no question matches filters, try without filters
         if (!questionObj) {
-          console.error("❌ No trivia questions available!");
-          return res.status(400).json({ error: "No trivia questions available." });
+          console.warn(`⚠️ [${requestId}] No questions match broadcaster filters, trying any question...`);
+          questionObj = await getRandomQuestionFromDB();
+          
+          // If still no question, check in-memory as fallback
+          if (!questionObj && triviaQuestions.length > 0) {
+            console.warn(`⚠️ [${requestId}] Falling back to in-memory questions`);
+            questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
+          }
+          
+          // If we still have no question, release lock and return error
+          if (!questionObj) {
+            console.error(`❌ [${requestId}] No trivia questions available!`);
+            questionInProgress = false; // Release the lock
+            return res.status(400).json({ error: "No trivia questions available." });
+          }
         }
+        
+        // Shuffle choices
+        const shuffledChoices = shuffleArray([...questionObj.choices]);
+        
+        // Get timing settings with fallbacks
+        const answerTime = triviaSettings?.answerTime || 30000;
+        
+        // Set round end time
+        triviaRoundEndTime = now + answerTime + 5000; // Extra 5s buffer
+        
+        // Schedule reset of question status and next question timing
+        // Use a clearable timeout to prevent race conditions
+        if (global.currentQuestionTimeout) {
+          clearTimeout(global.currentQuestionTimeout);
+        }
+        
+        global.currentQuestionTimeout = setTimeout(() => {
+          console.log(`⏳ [${requestId}] Question round completed, resetting for next question`);
+          questionInProgress = false;
+          nextQuestionTime = Date.now() + (triviaSettings?.intervalTime || 600000);
+        }, answerTime + 5000);
+        
+        // Prepare response with timestamp to help clients identify duplicates
+        const responseObj = {
+          question: questionObj.question,
+          choices: shuffledChoices,
+          correctAnswer: questionObj.correctAnswer,
+          duration: answerTime,
+          categoryId: questionObj.categoryId,
+          difficulty: questionObj.difficulty,
+          questionId: questionObj.id,
+          timestamp: now
+        };
+        
+        console.log(`📩 [${requestId}] Sending next trivia question: ID ${questionObj.id}`);
+        res.json(responseObj);
+      } catch (error) {
+        console.error(`❌ [${requestId}] Error getting next question:`, error);
+        // Release the lock on error
+        questionInProgress = false;
+        res.status(500).json({ error: "Server error getting next question" });
       }
-      
-      // Shuffle choices
-      const shuffledChoices = shuffleArray([...questionObj.choices]);
-      
-      // Prepare response
-      const responseObj = {
-        question: questionObj.question,
-        choices: shuffledChoices,
-        correctAnswer: questionObj.correctAnswer,
-        duration: triviaSettings?.answerTime || 30000,
-        categoryId: questionObj.categoryId,
-        difficulty: questionObj.difficulty,
-        questionId: questionObj.id
-      };
-      
-      console.log(`📩 Sending next trivia question: ID ${questionObj.id}`);
-      res.json(responseObj);
     } catch (error) {
-      console.error("❌ Error getting next question:", error);
-      res.status(500).json({ error: "Server error getting next question" });
+      console.error("❌ Error in get-next-question endpoint:", error);
+      // Always release the lock on error
+      questionInProgress = false;
+      res.status(500).json({ error: "Server error" });
     }
   });
   

@@ -76,92 +76,101 @@ const TriviaState = {
    * Handle Twitch extension authorization
    * @param {Object} auth - Authorization data from Twitch
    */
-  function handleAuthorization(auth) {
-    console.log("✅ Extension authorized with token:", auth.token.substring(0, 10) + "...");
-    TriviaState.userId = auth.userId;
+
+// In frontend/script.js - Improve handleAuthorization function
+/**
+ * Handle Twitch extension authorization
+ * @param {Object} auth - Authorization data from Twitch
+ */
+function handleAuthorization(auth) {
+  console.log("✅ Extension authorized with token:", auth.token.substring(0, 10) + "...");
+  TriviaState.userId = auth.userId;
+  
+  // Request identity sharing from the user
+  window.Twitch.ext.actions.requestIdShare();
+  
+  // Check if the extension has viewer info access
+  const hasViewerData = window.Twitch.ext.viewer && 
+                        window.Twitch.ext.viewer.id && 
+                        window.Twitch.ext.viewer.id === auth.userId;
+                        
+  console.log(`👤 Viewer data available: ${hasViewerData}`);
+  
+  // If we have direct access to the viewer's display name
+  if (hasViewerData && window.Twitch.ext.viewer.displayName) {
+    TriviaState.username = window.Twitch.ext.viewer.displayName;
+    console.log(`👤 Got username directly from viewer object: ${TriviaState.username}`);
     
-    // Check if the extension has viewer info access
-    const hasViewerData = window.Twitch.ext.viewer && 
-                          window.Twitch.ext.viewer.id && 
-                          window.Twitch.ext.viewer.id === auth.userId;
-                          
-    console.log(`👤 Viewer data available: ${hasViewerData}`);
-    
-    // If we have direct access to the viewer's display name
-    if (hasViewerData && window.Twitch.ext.viewer.displayName) {
-      TriviaState.username = window.Twitch.ext.viewer.displayName;
-      console.log(`👤 Got username directly from viewer object: ${TriviaState.username}`);
-      
-      // Store in localStorage as backup
-      try {
-        localStorage.setItem('twitchUsername', TriviaState.username);
-        localStorage.setItem('twitchUserId', TriviaState.userId);
-        console.log("💾 Stored username in localStorage");
-      } catch (e) {
-        console.warn("⚠️ Could not store username in localStorage");
-      }
-      
-      // Send username to server
-      UserManager.sendUsername();
-    } 
-    // Check if we have an identity link (opaqueId different from userId)
-    else if (auth.userId !== auth.clientId && auth.channelId) {
-      console.log("🔗 User appears to have identity link - sending data to server for resolution");
-      
-      // Send auth data to server for possible API resolution
-      fetch(`${TriviaState.getApiBaseUrl()}/extension-identity`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${auth.token}` // Include the JWT token
-        },
-        body: JSON.stringify({
-          userId: auth.userId,
-          channelId: auth.channelId,
-          clientId: auth.clientId,
-          token: auth.token
-        })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.username) {
-          console.log(`👤 Server resolved username: ${data.username}`);
-          TriviaState.username = data.username;
-          
-          // Store resolved username
-          try {
-            localStorage.setItem('twitchUsername', TriviaState.username);
-            localStorage.setItem('twitchUserId', TriviaState.userId);
-          } catch (e) {
-            // Ignore localStorage errors
-          }
-        }
-      })
-      .catch(error => console.error("❌ Error with identity resolution:", error));
+    // Store in localStorage as backup
+    try {
+      localStorage.setItem('twitchUsername', TriviaState.username);
+      localStorage.setItem('twitchUserId', TriviaState.userId);
+      console.log("💾 Stored username in localStorage");
+    } catch (e) {
+      console.warn("⚠️ Could not store username in localStorage");
     }
-    // Try to recover from localStorage as last resort
-    else {
-      try {
-        const storedUsername = localStorage.getItem('twitchUsername');
-        const storedUserId = localStorage.getItem('twitchUserId');
+    
+    // Send username to server
+    UserManager.sendUsername();
+  } 
+  // Check if we have an identity link (opaqueId different from userId)
+  else if (auth.userId !== auth.clientId && auth.channelId) {
+    console.log("🔗 User appears to have identity link - sending data to server for resolution");
+    
+    // Send auth data to server for possible API resolution
+    fetch(`${TriviaState.getApiBaseUrl()}/extension-identity`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${auth.token}` // Include the JWT token
+      },
+      body: JSON.stringify({
+        userId: auth.userId,
+        channelId: auth.channelId,
+        clientId: auth.clientId,
+        token: auth.token
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.username) {
+        console.log(`👤 Server resolved username: ${data.username}`);
+        TriviaState.username = data.username;
         
-        if (storedUsername && storedUserId === TriviaState.userId) {
-          TriviaState.username = storedUsername;
-          console.log("👤 Restored username from localStorage:", TriviaState.username);
-          
-          // Send recovered username to server
-          UserManager.sendUsername();
-        } else {
-          console.log("⚠️ No username available from any source");
+        // Store resolved username
+        try {
+          localStorage.setItem('twitchUsername', TriviaState.username);
+          localStorage.setItem('twitchUserId', TriviaState.userId);
+        } catch (e) {
+          // Ignore localStorage errors
         }
-      } catch (e) {
-        // Ignore localStorage errors
       }
-    }
-    
-    // Always fetch score regardless of username status
-    UserManager.fetchUserScore();
+    })
+    .catch(error => console.error("❌ Error with identity resolution:", error));
   }
+  // Try to recover from localStorage as last resort
+  else {
+    try {
+      const storedUsername = localStorage.getItem('twitchUsername');
+      const storedUserId = localStorage.getItem('twitchUserId');
+      
+      if (storedUsername && storedUserId === TriviaState.userId) {
+        TriviaState.username = storedUsername;
+        console.log("👤 Restored username from localStorage:", TriviaState.username);
+        
+        // Send recovered username to server
+        UserManager.sendUsername();
+      } else {
+        console.log("⚠️ No username available from any source");
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+  }
+  
+  // Always fetch score regardless of username status
+  UserManager.fetchUserScore();
+}
   
   /**
    * Process broadcast messages from Twitch PubSub
@@ -330,6 +339,14 @@ function handleTriviaQuestion(data) {
       
       console.log(`👤 Sending username to server: ${TriviaState.username}`);
       
+      // Store in localStorage as well for persistence
+      try {
+        localStorage.setItem('twitchUsername', TriviaState.username);
+        localStorage.setItem('twitchUserId', TriviaState.userId);
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      
       fetch(`${TriviaState.getApiBaseUrl()}/api/set-username`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -342,7 +359,7 @@ function handleTriviaQuestion(data) {
       .then(data => console.log("✅ Username sent successfully"))
       .catch(error => console.error("❌ Error sending username:", error));
     },
-    
+
     /**
      * Fetch user's score from server
      */

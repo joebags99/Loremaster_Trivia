@@ -2075,93 +2075,55 @@ app.post("/submit-answer", async (req, res) => {
   // Extension identity endpoint
   app.post("/extension-identity", async (req, res) => {
     try {
-      const { userId, channelId, clientId, token } = req.body;
+      const { userId, token } = req.body;
       
       if (!userId) {
         return res.status(400).json({ error: "Missing userId" });
       }
       
-      console.log(`🔍 Processing identity for user: ${userId}`);
-      
-      // First, try to decode the JWT token if provided
-      let decodedToken = null;
+      // First, try to decode the JWT token
       let username = null;
       
       if (token) {
         try {
-          // Verify the token using our extension secret
-          decodedToken = jwt.verify(token, extSecretBuffer, {
+          const decodedToken = jwt.verify(token, extSecretBuffer, {
             algorithms: ['HS256']
           });
           
-          console.log(`✅ Verified JWT for user ${userId}, role: ${decodedToken.role}`);
-          
-          // Check if token contains username in opaque_user_id (some versions of Twitch API)
-          if (decodedToken.opaque_user_id && decodedToken.opaque_user_id !== userId) {
-            console.log(`⚠️ Opaque user ID mismatch: ${decodedToken.opaque_user_id} vs ${userId}`);
-          }
-          
-          // If we have user_id in the token, this is likely a linked identity
+          // If user has shared identity, user_id will be present
           if (decodedToken.user_id) {
-            console.log(`🔗 Found linked identity in token: ${decodedToken.user_id}`);
-            
             // Try to get username using Twitch API
             const twitchToken = await getTwitchOAuthToken();
             if (twitchToken) {
-              username = await resolveTwitchUsername(decodedToken.user_id, EXT_CLIENT_ID, twitchToken);
-              
-              if (username) {
-                console.log(`✅ Resolved username for token user_id: ${username}`);
-                
-                // Store for both the opaque ID and the actual Twitch ID
-                await setUsername(userId, username);
-                
-                if (decodedToken.user_id !== userId) {
-                  await setUsername(decodedToken.user_id, username);
+              const response = await axios.get(`https://api.twitch.tv/helix/users?id=${decodedToken.user_id}`, {
+                headers: {
+                  'Client-ID': EXT_CLIENT_ID,
+                  'Authorization': `Bearer ${twitchToken}`
                 }
+              });
+              
+              if (response.data && response.data.data && response.data.data.length > 0) {
+                username = response.data.data[0].display_name;
+                
+                // Store username for both the opaque ID and the real ID
+                await setUsername(userId, username);
+                await setUsername(decodedToken.user_id, username);
               }
             }
           }
-        } catch (tokenError) {
-          console.error(`❌ JWT verification failed:`, tokenError);
+        } catch (error) {
+          console.error("JWT verification failed:", error);
         }
       }
       
-      // If no username found but we have direct username in request
-      if (!username && req.body.username) {
-        username = req.body.username;
-        console.log(`👤 Using directly provided username: ${username}`);
-        
-        // Store username
-        await setUsername(userId, username);
-      }
-      
-      // Return the username if we found one
+      // Return the username if found
       if (username) {
-        res.json({ 
-          success: true, 
-          username: username,
-          message: "Username successfully resolved and stored"
-        });
+        res.json({ success: true, username });
       } else {
-        // Final attempt - check if we already have a username for this user
-        const existingUsername = userIdToUsername[userId] || userIdToUsername[cleanUserId(userId)];
-        
-        if (existingUsername) {
-          res.json({ 
-            success: true, 
-            username: existingUsername,
-            message: "Found existing username in memory"
-          });
-        } else {
-          res.json({ 
-            success: false, 
-            message: "Could not resolve username" 
-          });
-        }
+        res.json({ success: false, message: "Could not resolve username" });
       }
     } catch (error) {
-      console.error("❌ Error in extension-identity endpoint:", error);
+      console.error("Error in extension-identity endpoint:", error);
       res.status(500).json({ error: "Server error" });
     }
   });

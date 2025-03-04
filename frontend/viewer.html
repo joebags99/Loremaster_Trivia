@@ -28,6 +28,22 @@
     <div id="timer-bar"></div>
     <div id="choices-container"></div>
   </div>
+
+  <div id="identity-prompt" style="display: none;">
+    <p>Share your Twitch identity to appear on the leaderboard with your username!</p>
+    <button id="share-identity-btn">Share Identity</button>
+  </div>
+  
+  <script>
+    document.getElementById('share-identity-btn').addEventListener('click', function() {
+      window.Twitch.ext.actions.requestIdShare();
+    });
+    
+    // Show prompt if identity not linked
+    if (!window.Twitch.ext.viewer || !window.Twitch.ext.viewer.displayName) {
+      document.getElementById('identity-prompt').style.display = 'block';
+    }
+  </script>
   
   <!-- Twitch Helper -->
   <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>

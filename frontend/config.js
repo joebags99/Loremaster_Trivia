@@ -1429,7 +1429,10 @@ const TwitchService = {
       
       switch (data.type) {
         // Settings messages
-        case "SETTINGS_UPDATE":
+        case "COUNTDOWN_UPDATE":
+            console.log("⏱️ Received countdown update with time remaining:", data.timeRemaining);
+
+            case "SETTINGS_UPDATE":
         case "UPDATE_SETTINGS":
           console.log("⚙️ Received settings update:", data);
           

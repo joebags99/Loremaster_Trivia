@@ -716,6 +716,44 @@ function handleTriviaQuestion(data) {
       }
     }
   };
+
+  /**
+   * Handle countdown update message
+   * @param {Object} data - Countdown data with timeRemaining
+   */
+  function handleCountdownUpdate(data) {
+    console.log("⏱️ Received countdown update");
+    
+    if (!data.timeRemaining && data.timeRemaining !== 0) {
+      console.warn("⚠️ Missing timeRemaining in countdown update");
+      return;
+    }
+    
+    // Update countdown flag to prevent duplicate updates
+    TriviaState.countdownUpdatedByPubSub = true;
+    
+    // Update nextQuestionTime based on the timeRemaining from server
+    TriviaState.nextQuestionTime = Date.now() + data.timeRemaining;
+    
+    // Update the UI with the new time
+    UI.setUIState("countdown");
+    TimerManager.updateCountdown(data.timeRemaining);
+    
+    // Reset flag after a short delay to allow local updates again
+    setTimeout(() => {
+      TriviaState.countdownUpdatedByPubSub = false;
+    }, 2000);
+  }
+
+  /**
+   * Handle trivia end message
+   */
+  function handleTriviaEnd() {
+    console.log("⛔ Trivia has ended");
+    TriviaState.triviaActive = false;
+    TriviaState.nextQuestionTime = null;
+    UI.setUIState("ended");
+  }
   
   // ======================================================
   // 8. INITIALIZATION & EVENT LISTENERS

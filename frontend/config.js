@@ -1281,9 +1281,66 @@ const TwitchService = {
     },
     
     /**
+     * Set up broadcaster identity tracking
+     * Ensures at least the broadcaster has their username in the system
+     */
+    setupBroadcasterIdentity() {
+        if (!window.Twitch || !window.Twitch.ext) {
+        console.error("❌ Twitch Extension SDK not available");
+        return;
+        }
+        
+        // Check if we get the channel info
+        window.Twitch.ext.onAuthorized((auth) => {
+        if (auth.channelId) {
+            console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
+            
+            // Store broadcaster ID for API calls
+            TriviaState.data.broadcasterId = auth.channelId;
+            
+            // Try to get broadcaster display name from Twitch SDK
+            if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
+            const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
+            console.log(`🎙️ Channel display name: ${broadcasterName}`);
+            
+            // Store for API calls
+            TriviaState.data.broadcasterName = broadcasterName;
+            
+            // Send to server - special case for broadcaster
+            this.sendServerMessage(auth.channelId, {
+                type: 'BROADCASTER_IDENTITY',
+                channelId: auth.channelId,
+                displayName: broadcasterName
+            });
+            } else {
+            // Try to resolve via API endpoint
+            fetch(`${CONFIG.API_BASE_URL()}/api/set-broadcaster-name`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                channelId: auth.channelId,
+                jwt: auth.token
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.displayName) {
+                console.log(`🎙️ Resolved broadcaster name via API: ${data.displayName}`);
+                TriviaState.data.broadcasterName = data.displayName;
+                }
+            })
+            .catch(error => {
+                console.error("❌ Failed to resolve broadcaster name:", error);
+            });
+            }
+        }
+        });
+    }
+
+    /**
      * Set up Twitch authorization handling
      */
-    setupAuthorization() {
+    ,setupAuthorization() {
       window.Twitch.ext.onAuthorized((auth) => {
         console.log("✅ Extension authorized:", auth);
         

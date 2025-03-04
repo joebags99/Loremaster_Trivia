@@ -1254,6 +1254,7 @@ async function setUsername(userId, username) {
    * Process identity-linked username from Twitch
    * Call this when receiving Twitch JWT with identity link
    * @param {string} userId - The user ID from JWT
+   * @param {string} username - The username to set
    * @param {string} identityId - The user's actual Twitch ID (if linked)
    * @param {string} clientId - Client ID of extension
    * @param {string} helixToken - Twitch Helix token 
@@ -2037,30 +2038,205 @@ app.post("/submit-answer", async (req, res) => {
   // Extension identity endpoint
   app.post("/extension-identity", async (req, res) => {
     try {
-      const { userId, username, identityId } = req.body;
+      const { userId, channelId, clientId, token } = req.body;
       
       if (!userId) {
         return res.status(400).json({ error: "Missing userId" });
       }
       
-      // Store username if provided directly
-      if (username) {
-        console.log(`👤 Received extension identity: User ${userId} is "${username}"`);
-        await setUsername(userId, username);
-      }
-      // If identity ID is provided but no username, try to resolve it
-      else if (identityId) {
-        console.log(`👤 Attempting to resolve username for identity: ${identityId}`);
-        // Try to get Twitch OAuth token
-        const token = await getTwitchOAuthToken();
-        if (token) {
-          await processIdentityLinkedUser(userId, identityId, EXT_CLIENT_ID, token);
+      console.log(`🔍 Processing identity for user: ${userId}`);
+      
+      // First, try to decode the JWT token if provided
+      let decodedToken = null;
+      let username = null;
+      
+      if (token) {
+        try {
+          // Verify the token using our extension secret
+          decodedToken = jwt.verify(token, extSecretBuffer, {
+            algorithms: ['HS256']
+          });
+          
+          console.log(`✅ Verified JWT for user ${userId}, role: ${decodedToken.role}`);
+          
+          // Check if token contains username in opaque_user_id (some versions of Twitch API)
+          if (decodedToken.opaque_user_id && decodedToken.opaque_user_id !== userId) {
+            console.log(`⚠️ Opaque user ID mismatch: ${decodedToken.opaque_user_id} vs ${userId}`);
+          }
+          
+          // If we have user_id in the token, this is likely a linked identity
+          if (decodedToken.user_id) {
+            console.log(`🔗 Found linked identity in token: ${decodedToken.user_id}`);
+            
+            // Try to get username using Twitch API
+            const twitchToken = await getTwitchOAuthToken();
+            if (twitchToken) {
+              username = await resolveTwitchUsername(decodedToken.user_id, EXT_CLIENT_ID, twitchToken);
+              
+              if (username) {
+                console.log(`✅ Resolved username for token user_id: ${username}`);
+                
+                // Store for both the opaque ID and the actual Twitch ID
+                await setUsername(userId, username);
+                
+                if (decodedToken.user_id !== userId) {
+                  await setUsername(decodedToken.user_id, username);
+                }
+              }
+            }
+          }
+        } catch (tokenError) {
+          console.error(`❌ JWT verification failed:`, tokenError);
         }
       }
       
-      res.json({ success: true });
+      // If no username found but we have direct username in request
+      if (!username && req.body.username) {
+        username = req.body.username;
+        console.log(`👤 Using directly provided username: ${username}`);
+        
+        // Store username
+        await setUsername(userId, username);
+      }
+      
+      // Return the username if we found one
+      if (username) {
+        res.json({ 
+          success: true, 
+          username: username,
+          message: "Username successfully resolved and stored"
+        });
+      } else {
+        // Final attempt - check if we already have a username for this user
+        const existingUsername = userIdToUsername[userId] || userIdToUsername[cleanUserId(userId)];
+        
+        if (existingUsername) {
+          res.json({ 
+            success: true, 
+            username: existingUsername,
+            message: "Found existing username in memory"
+          });
+        } else {
+          res.json({ 
+            success: false, 
+            message: "Could not resolve username" 
+          });
+        }
+      }
     } catch (error) {
       console.error("❌ Error in extension-identity endpoint:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // Endpoint to set broadcaster name
+app.post("/api/set-broadcaster-name", async (req, res) => {
+  try {
+    const { channelId, jwt } = req.body;
+    
+    if (!channelId) {
+      return res.status(400).json({ error: "Missing channelId" });
+    }
+    
+    console.log(`🎙️ Processing broadcaster identity for channel: ${channelId}`);
+    
+    // Verify JWT if provided
+    let decodedToken = null;
+    if (jwt) {
+      try {
+        decodedToken = jwt.verify(jwt, extSecretBuffer, {
+          algorithms: ['HS256']
+        });
+        console.log(`✅ Verified JWT for broadcaster lookup with role: ${decodedToken.role}`);
+      } catch (err) {
+        console.warn("⚠️ Invalid JWT for broadcaster lookup");
+      }
+    }
+    
+    // If we get a direct display name in the request
+    if (req.body.displayName) {
+      console.log(`👤 Using provided broadcaster name: ${req.body.displayName}`);
+      
+      // Store using userId = channelId since that's how Twitch identifies broadcasters
+      await setUsername(channelId, req.body.displayName);
+      
+      return res.json({ 
+        success: true, 
+        displayName: req.body.displayName,
+        method: "direct"
+      });
+    }
+    
+    // Try to look up via Twitch API
+    try {
+      const twitchToken = await getTwitchOAuthToken();
+      if (!twitchToken) {
+        return res.status(500).json({ 
+          success: false, 
+          error: "Failed to get Twitch API token" 
+        });
+      }
+      
+        // Use Helix API to get broadcaster info
+        const response = await axios.get(`https://api.twitch.tv/helix/users?id=${channelId}`, {
+          headers: {
+            'Client-ID': EXT_CLIENT_ID,
+            'Authorization': `Bearer ${twitchToken}`
+          }
+        });
+        
+        if (response.data && response.data.data && response.data.data.length > 0) {
+          const broadcasterInfo = response.data.data[0];
+          const displayName = broadcasterInfo.display_name;
+          
+          console.log(`✅ Resolved broadcaster name from API: ${displayName}`);
+          
+          // Store in our system
+          await setUsername(channelId, displayName);
+          
+          // Return success
+          return res.json({ 
+            success: true, 
+            displayName: displayName,
+            method: "api"
+          });
+        } else {
+          console.warn(`⚠️ Broadcaster ${channelId} not found in Twitch API`);
+          return res.json({ 
+            success: false, 
+            error: "Broadcaster not found" 
+          });
+        }
+      } catch (apiError) {
+        console.error("❌ Error looking up broadcaster via API:", apiError);
+        return res.status(500).json({ 
+          success: false, 
+          error: "API error" 
+        });
+      }
+    } catch (error) {
+      console.error("❌ Error in set-broadcaster-name endpoint:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // Handle broadcaster identity messages from Twitch PubSub
+  app.post("/twitch/broadcaster-identity", async (req, res) => {
+    try {
+      const { channelId, displayName } = req.body;
+      
+      if (!channelId || !displayName) {
+        return res.status(400).json({ error: "Missing required parameters" });
+      }
+      
+      console.log(`🎙️ Received broadcaster identity: ${displayName} for channel ${channelId}`);
+      
+      // Store broadcaster name in database
+      await setUsername(channelId, displayName);
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("❌ Error handling broadcaster identity:", error);
       res.status(500).json({ error: "Server error" });
     }
   });

@@ -1003,9 +1003,6 @@ const Score = sequelize.define("Score", {
  * @returns {Promise<boolean>} Success status
  */
 async function setUsername(userId, username) {
-  console.log('USER ID: ' + userId);
-  console.log('USERNAME: ' + username);
-  Console.log('HALSDFKHJLAKJDSHFLKJASHDFLKJADSLFKJLAKDFJLSAKDJFASDFA');
     if (!userId || !username) {
       console.warn("⚠️ Missing userId or username in setUsername");
       return false;
@@ -1087,7 +1084,7 @@ async function setUsername(userId, username) {
       if (response.data && response.data.data && response.data.data.length > 0) {
         const displayName = response.data.data[0].display_name;
         console.log(`✅ Resolved Twitch username: ${displayName} for ID ${cleanId}`);
-        
+        console.log('resolve twitch usernmae stuff here' + userId +  ' ' + displayName);
         // Save to memory and database using existing function
         await setUsername(userId, displayName);
         
@@ -1186,6 +1183,7 @@ async function setUsername(userId, username) {
       
       // Update username if we have one (either from request or from lookup)
       if (effectiveUsername) {
+        console.log('UPDATE USER SCORE RIGHT HERE BITCH: ' + cleanID + ' ' + effectiveUsername);
         await setUsername(cleanId, effectiveUsername);
         
         // If it's a generated username like "User-U7036", don't actually use it
@@ -1276,6 +1274,7 @@ async function setUsername(userId, username) {
       if (displayName) {
         // Also set username for the opaque user ID (JWT userId) if different
         if (userId !== identityId) {
+          console.log('process the identity of some shit: ' + userId + ' ' + displayName);
           await setUsername(userId, displayName);
         }
         
@@ -2014,6 +2013,7 @@ app.post("/submit-answer", async (req, res) => {
       }
       
       // Set username in memory and database
+      console.log('SET USERNAME HERE DUUUUUDE:' + userId + ' ' + username);
       const success = await setUsername(userId, username);
       
       // Log username stats

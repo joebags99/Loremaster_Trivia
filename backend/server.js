@@ -2300,160 +2300,166 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
     }
   });
   
-  // Get next question
-  app.get("/get-next-question", async (req, res) => {
+// Get next question
+app.get("/get-next-question", async (req, res) => {
+  try {
+    const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    console.log(`📝 [${requestId}] Received next question request`);
+    
+    // 1. Basic validation checks
+    if (!triviaActive) {
+      console.log(`⏳ [${requestId}] Trivia is inactive. Skipping next question request.`);
+      return res.json({ error: "Trivia is not active." });
+    }
+
+    // 2. Check if it's time for a new question
+    const timeRemaining = nextQuestionTime - Date.now();
+    if (timeRemaining > 0) {
+      console.log(`⏳ [${requestId}] Next question not ready yet! Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
+      return res.json({ error: "Next question not ready yet.", timeRemaining });
+    }
+
+    // 3. Advanced concurrency handling
+    const now = Date.now();
+    
+    // If a question is already being generated, try to serve the cached version
+    if (questionInProgress) {
+      console.log(`🔄 [${requestId}] Question already in progress - checking cache`);
+      
+      // If we have a valid cached question and it's recent (within 10 seconds)
+      if (global.cachedQuestion && (now - global.cachedQuestionTimestamp) < 10000) {
+        console.log(`📤 [${requestId}] Serving cached question from ${now - global.cachedQuestionTimestamp}ms ago`);
+        return res.json(global.cachedQuestion);
+      }
+      
+      // Otherwise tell client to retry shortly
+      console.warn(`⚠️ [${requestId}] No valid cached question available, sending retry instruction`);
+      return res.json({ 
+        error: "Question generation in progress", 
+        message: "Please retry in a moment",
+        retry: true
+      });
+    }
+    
+    // Only prevent very rapid sequential requests if we don't have a cached question
+    if (now - lastQuestionTimestamp < MIN_QUESTION_INTERVAL && !global.cachedQuestion) {
+      console.warn(`⚠️ [${requestId}] Question was sent too recently (${now - lastQuestionTimestamp}ms ago)! Preventing duplicate.`);
+      return res.json({ 
+        error: "Question was sent too recently", 
+        message: "Please wait before requesting another question",
+        timeElapsed: now - lastQuestionTimestamp,
+        minInterval: MIN_QUESTION_INTERVAL
+      });
+    }
+
+    // 4. Generate new question
+    console.log(`🔍 [${requestId}] Getting new question from database...`);
+    
+    // Set locks to prevent concurrent question generation
+    lastQuestionTimestamp = now;
+    questionInProgress = true;
+
     try {
-      const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-      console.log(`📝 [${requestId}] Received next question request`);
+      // Get broadcaster filters
+      const filters = await getBroadcasterFilters(EXT_OWNER_ID);
       
-      if (!triviaActive) {
-        console.log(`⏳ [${requestId}] Trivia is inactive. Skipping next question request.`);
-        return res.json({ error: "Trivia is not active." });
-      }
-  
-      // Check if we need to wait before sending the next question
-      const timeRemaining = nextQuestionTime - Date.now();
-      if (timeRemaining > 0) {
-        console.log(`⏳ [${requestId}] Next question not ready yet! Time remaining: ${Math.round(timeRemaining / 1000)} seconds`);
-        return res.json({ error: "Next question not ready yet.", timeRemaining });
-      }
-  
-      // === IMPROVED CONCURRENCY HANDLING ===
-      const now = Date.now();
+      // Get random question from database with cascading fallbacks
+      let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
       
-      // Check if a question is already in progress
-      if (questionInProgress) {
-        console.log(`🔄 [${requestId}] Question already in progress - serving cached question`);
+      if (!questionObj) {
+        console.warn(`⚠️ [${requestId}] No questions match broadcaster filters, trying any question...`);
+        questionObj = await getRandomQuestionFromDB();
         
-        // If we have a valid cached question and it's recent (within 10 seconds)
-        if (global.cachedQuestion && (now - global.cachedQuestionTimestamp) < 10000) {
-          return res.json(global.cachedQuestion);
+        if (!questionObj && triviaQuestions.length > 0) {
+          console.warn(`⚠️ [${requestId}] Falling back to in-memory questions`);
+          questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
         }
         
-        // Otherwise wait a bit and try again
-        console.warn(`⚠️ [${requestId}] No valid cached question available, waiting briefly`);
-        return res.json({ 
-          error: "Question generation in progress", 
-          message: "Please retry in a moment",
-          retry: true
-        });
-      }
-      
-      // Only check for "too recent" if we don't have a cached question to serve
-      if (now - lastQuestionTimestamp < MIN_QUESTION_INTERVAL && !global.cachedQuestion) {
-        console.warn(`⚠️ [${requestId}] Question was sent too recently (${now - lastQuestionTimestamp}ms ago)! Preventing duplicate.`);
-        return res.json({ 
-          error: "Question was sent too recently", 
-          message: "Please wait before requesting another question",
-          timeElapsed: now - lastQuestionTimestamp,
-          minInterval: MIN_QUESTION_INTERVAL
-        });
-      }
-  
-      // At this point, we're ready to get a new question
-      console.log(`🔍 [${requestId}] Getting next question from database...`);
-      
-      // Acquire the lock immediately to prevent race conditions
-      lastQuestionTimestamp = now;
-      questionInProgress = true;
-  
-      try {
-        // Get broadcaster filters
-        const filters = await getBroadcasterFilters(EXT_OWNER_ID);
-        
-        // Get random question from database
-        let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
-        
-        // If no question matches filters, try without filters
         if (!questionObj) {
-          console.warn(`⚠️ [${requestId}] No questions match broadcaster filters, trying any question...`);
-          questionObj = await getRandomQuestionFromDB();
-          
-          // If still no question, check in-memory as fallback
-          if (!questionObj && triviaQuestions.length > 0) {
-            console.warn(`⚠️ [${requestId}] Falling back to in-memory questions`);
-            questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
-          }
-          
-          // If we still have no question, release lock and return error
-          if (!questionObj) {
-            console.error(`❌ [${requestId}] No trivia questions available!`);
-            questionInProgress = false; // Release the lock
-            return res.status(400).json({ error: "No trivia questions available." });
-          }
+          console.error(`❌ [${requestId}] No trivia questions available!`);
+          questionInProgress = false; // Release the lock
+          return res.status(400).json({ error: "No trivia questions available." });
         }
-        
-        // Shuffle choices
-        const shuffledChoices = shuffleArray([...questionObj.choices]);
-        
-        // Get timing settings with fallbacks
-        const answerTime = triviaSettings?.answerTime || 30000;
-        
-        // Set round end time
-        triviaRoundEndTime = now + answerTime + 5000; // Extra 5s buffer
-        
-        // Schedule reset of question status and next question timing
-        // Use a clearable timeout to prevent race conditions
-        if (global.currentQuestionTimeout) {
-          clearTimeout(global.currentQuestionTimeout);
-        }
-        
-        global.currentQuestionTimeout = setTimeout(() => {
-          console.log(`⏳ [${requestId}] Question round completed, resetting for next question`);
-          questionInProgress = false;
-          // Clear cached question after the full duration
-          global.cachedQuestion = null;
-          global.cachedQuestionTimestamp = 0;
-          
-          nextQuestionTime = Date.now() + (triviaSettings?.intervalTime || 600000);
-        }, answerTime + 5000);
-        
-        // Prepare response with timestamp to help clients identify duplicates
-        const responseObj = {
-          question: questionObj.question,
-          choices: shuffledChoices,
-          correctAnswer: questionObj.correctAnswer,
-          duration: answerTime,
-          categoryId: questionObj.categoryId,
-          difficulty: questionObj.difficulty,
-          questionId: questionObj.id,
-          timestamp: now
-        };
-        
-        // Store the question in the global cache for other viewers who might request it
-        global.cachedQuestion = responseObj;
-        global.cachedQuestionTimestamp = now;
-        
-        console.log(`📩 [${requestId}] Sending next trivia question: ID ${questionObj.id}`);
-        
-        // Also broadcast the question to all clients via PubSub
-        try {
-          const questionMessage = {
-            type: "TRIVIA_QUESTION",
-            ...responseObj
-          };
-          
-          broadcastToTwitch(EXT_OWNER_ID, questionMessage);
-        } catch (broadcastError) {
-          console.error(`❌ [${requestId}] Error broadcasting question:`, broadcastError);
-          // Continue anyway - clients can still get the question via direct request
-        }
-        
-        return res.json(responseObj);
-      } catch (error) {
-        console.error(`❌ [${requestId}] Error getting next question:`, error);
-        // Release the lock on error
+      }
+      
+      // 5. Prepare question data
+      const shuffledChoices = shuffleArray([...questionObj.choices]);
+      const answerTime = triviaSettings?.answerTime || 30000;
+      
+      // Set round end time
+      triviaRoundEndTime = now + answerTime + 5000; // Extra 5s buffer
+      
+      // Clear any existing timeout and schedule new one
+      if (global.currentQuestionTimeout) {
+        clearTimeout(global.currentQuestionTimeout);
+      }
+      
+      // Schedule cleanup and next question preparation
+      global.currentQuestionTimeout = setTimeout(() => {
+        console.log(`⏳ [${requestId}] Question round completed, resetting for next question`);
         questionInProgress = false;
         global.cachedQuestion = null;
-        return res.status(500).json({ error: "Server error getting next question" });
+        global.cachedQuestionTimestamp = 0;
+        
+        nextQuestionTime = Date.now() + (triviaSettings?.intervalTime || 600000);
+      }, answerTime + 5000);
+      
+      // 6. Create response object
+      const responseObj = {
+        question: questionObj.question,
+        choices: shuffledChoices,
+        correctAnswer: questionObj.correctAnswer,
+        duration: answerTime,
+        categoryId: questionObj.categoryId,
+        difficulty: questionObj.difficulty,
+        questionId: questionObj.id,
+        timestamp: now
+      };
+      
+      // 7. Cache and broadcast
+      // Store in global cache for other clients
+      global.cachedQuestion = responseObj;
+      global.cachedQuestionTimestamp = now;
+      
+      console.log(`📩 [${requestId}] Sending trivia question: ID ${questionObj.id}`);
+      
+      // Broadcast to all clients via PubSub (non-blocking)
+      try {
+        const questionMessage = {
+          type: "TRIVIA_QUESTION",
+          ...responseObj
+        };
+        
+        broadcastToTwitch(EXT_OWNER_ID, questionMessage)
+          .then(success => {
+            if (success) {
+              console.log(`📢 [${requestId}] Successfully broadcast question to all clients`);
+            } else {
+              console.warn(`⚠️ [${requestId}] Failed to broadcast question, clients will rely on direct requests`);
+            }
+          })
+          .catch(err => console.error(`❌ [${requestId}] Error in broadcast:`, err));
+      } catch (broadcastError) {
+        console.error(`❌ [${requestId}] Error preparing broadcast:`, broadcastError);
+        // Continue anyway - clients can still get the question via direct request
       }
+      
+      // 8. Send response
+      return res.json(responseObj);
     } catch (error) {
-      console.error("❌ Error in get-next-question endpoint:", error);
-      // Always release the lock on error
+      console.error(`❌ [${requestId}] Error getting next question:`, error);
+      // Release the lock on error
       questionInProgress = false;
-      return res.status(500).json({ error: "Server error" });
+      global.cachedQuestion = null;
+      return res.status(500).json({ error: "Server error getting next question" });
     }
-  });
+  } catch (error) {
+    console.error("❌ Error in get-next-question endpoint:", error);
+    // Always release the lock on error
+    questionInProgress = false;
+    return res.status(500).json({ error: "Server error" });
+  }
+});
   
   // Manual route to send a trivia question
   app.post("/send-test", async (req, res) => {

@@ -597,194 +597,198 @@ function handleTriviaQuestion(data) {
     }
   };
   
-  // ======================================================
-  // 7. TIMER MANAGEMENT
-  // ======================================================
-  
-  /**
-   * Countdown and timer management
-   */
-  const TimerManager = {
-    /**
-     * Update countdown display
-     * @param {number} timeRemaining - Time remaining in milliseconds
-     */
-    updateCountdown(timeRemaining) {
-      if (!UI.countdownTimer || isNaN(timeRemaining) || timeRemaining <= 0) {
-        if (UI.countdownTimer) {
-          UI.countdownTimer.textContent = "0:00";
-        }
-        return;
-      }
-      
-      // Format time as MM:SS
-      const minutes = Math.floor(timeRemaining / 60000);
-      const seconds = Math.floor((timeRemaining % 60000) / 1000);
-      
-      UI.countdownTimer.style.display = "inline";
-      UI.countdownTimer.textContent = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-    },
-    
-    /**
-     * Start timer for current question
-     * @param {number} duration - Duration in milliseconds
-     * @param {string} correctAnswer - Correct answer text
-     */
-    startQuestionTimer(duration, correctAnswer) {
-      // Store current question timestamp to verify timer validity later
-      const currentQuestionTime = TriviaState.questionStartTime;
-      
-      setTimeout(() => {
-        // Check if we're still showing the same question
-        if (TriviaState.questionStartTime !== currentQuestionTime) {
-          console.log("⚠️ Question changed, not revealing answers");
-          return;
-        }
-        
-        console.log("⌛ Time's up! Revealing correct answer");
-        
-        // Reveal answer
-        QuestionManager.revealCorrectAnswer(correctAnswer);
-        
-        // Schedule transition back to countdown
-        setTimeout(() => {
-          const nextInterval = TriviaState.settings.intervalTime || 600000;
-          this.transitionToCountdown(nextInterval);
-        }, 5000);
-      }, duration);
-    },
-    
-    /**
-     * Transition to countdown screen
-     * @param {number} intervalTime - Interval time in milliseconds
-     */
-    transitionToCountdown(intervalTime) {
-      // Validate interval time with fallbacks
-      if (!intervalTime || isNaN(intervalTime)) {
-        intervalTime = TriviaState.settings.intervalTime || 600000;
-      }
-      
-      // Update state
-      TriviaState.triviaActive = true;
-      TriviaState.nextQuestionTime = Date.now() + intervalTime;
-      
-      // Update UI
-      UI.setUIState("countdown");
-      this.updateCountdown(intervalTime);
-    },
-    
-    /**
-     * Check if it's time to request the next question
-     */
-    checkForNextQuestion() {
-      // Skip if trivia isn't active or if PubSub updated countdown
-      if (!TriviaState.triviaActive || !TriviaState.nextQuestionTime || TriviaState.countdownUpdatedByPubSub) {
-        return;
-      }
-      
-      const timeRemaining = TriviaState.nextQuestionTime - Date.now();
-      
-      // Update local countdown
-      this.updateCountdown(timeRemaining);
-      
-      // Request next question when time is up
-      if (timeRemaining <= 0 && !TriviaState.questionRequested) {
-        console.log("⏳ Countdown reached 0! Requesting next question");
-        TriviaState.questionRequested = true;
-        
-        this.requestQuestion();
-      }
-    },
-    
-    // Add this new method to TimerManager to handle question requests with retries
-    requestQuestion(retryCount = 0) {
-      if (retryCount > 3) {
-        console.error("❌ Maximum retry attempts reached for question request");
-        TriviaState.questionRequested = false;
-        return;
-      }
-      
-      fetch(`${TriviaState.getApiBaseUrl()}/get-next-question`)
-        .then(response => response.json())
-        .then(data => {
-          if (data.error) {
-            console.warn(`⚠️ ${data.error}`);
-            
-            // Special handling for retry requests
-            if (data.retry) {
-              console.log("🔄 Server asked us to retry. Waiting briefly...");
-              setTimeout(() => {
-                this.requestQuestion(retryCount + 1);
-              }, 1000); // Wait 1 second before retry
-              return;
-            }
-            
-            // Reset request flag after delay to prevent spam
-            setTimeout(() => {
-              TriviaState.questionRequested = false;
-            }, 5000);
-            return;
-          }
-          
-          // Display question if valid
-          QuestionManager.displayQuestion(data);
-        })
-        .catch(error => {
-          console.error("❌ Error fetching next question:", error);
-          
-          // Retry on network errors
-          if (retryCount < 3) {
-            console.log(`🔄 Retrying question request (attempt ${retryCount + 1})...`);
-            setTimeout(() => {
-              this.requestQuestion(retryCount + 1);
-            }, 1000 * (retryCount + 1)); // Exponential backoff
-            return;
-          }
-          
-          // Reset request flag after delay
-          setTimeout(() => {
-            TriviaState.questionRequested = false;
-          }, 5000);
-        });
+// ======================================================
+// 7. TIMER MANAGEMENT
+// ======================================================
 
+/**
+ * Countdown and timer management
+ */
+const TimerManager = {
   /**
-   * Handle countdown update message
-   * @param {Object} data - Countdown data with timeRemaining
+   * Update countdown display
+   * @param {number} timeRemaining - Time remaining in milliseconds
    */
-  function handleCountdownUpdate(data) {
-    console.log("⏱️ Received countdown update");
-    
-    if (!data.timeRemaining && data.timeRemaining !== 0) {
-      console.warn("⚠️ Missing timeRemaining in countdown update");
+  updateCountdown(timeRemaining) {
+    if (!UI.countdownTimer || isNaN(timeRemaining) || timeRemaining <= 0) {
+      if (UI.countdownTimer) {
+        UI.countdownTimer.textContent = "0:00";
+      }
       return;
     }
     
-    // Update countdown flag to prevent duplicate updates
-    TriviaState.countdownUpdatedByPubSub = true;
+    // Format time as MM:SS
+    const minutes = Math.floor(timeRemaining / 60000);
+    const seconds = Math.floor((timeRemaining % 60000) / 1000);
     
-    // Update nextQuestionTime based on the timeRemaining from server
-    TriviaState.nextQuestionTime = Date.now() + data.timeRemaining;
-    
-    // Update the UI with the new time
-    UI.setUIState("countdown");
-    TimerManager.updateCountdown(data.timeRemaining);
-    
-    // Reset flag after a short delay to allow local updates again
-    setTimeout(() => {
-      TriviaState.countdownUpdatedByPubSub = false;
-    }, 2000);
-  }
-
+    UI.countdownTimer.style.display = "inline";
+    UI.countdownTimer.textContent = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+  },
+  
   /**
-   * Handle trivia end message
+   * Start timer for current question
+   * @param {number} duration - Duration in milliseconds
+   * @param {string} correctAnswer - Correct answer text
    */
-  function handleTriviaEnd() {
-    console.log("⛔ Trivia has ended");
-    TriviaState.triviaActive = false;
-    TriviaState.nextQuestionTime = null;
-    UI.setUIState("ended");
+  startQuestionTimer(duration, correctAnswer) {
+    // Store current question timestamp to verify timer validity later
+    const currentQuestionTime = TriviaState.questionStartTime;
+    
+    setTimeout(() => {
+      // Check if we're still showing the same question
+      if (TriviaState.questionStartTime !== currentQuestionTime) {
+        console.log("⚠️ Question changed, not revealing answers");
+        return;
+      }
+      
+      console.log("⌛ Time's up! Revealing correct answer");
+      
+      // Reveal answer
+      QuestionManager.revealCorrectAnswer(correctAnswer);
+      
+      // Schedule transition back to countdown
+      setTimeout(() => {
+        const nextInterval = TriviaState.settings.intervalTime || 600000;
+        this.transitionToCountdown(nextInterval);
+      }, 5000);
+    }, duration);
+  },
+  
+  /**
+   * Transition to countdown screen
+   * @param {number} intervalTime - Interval time in milliseconds
+   */
+  transitionToCountdown(intervalTime) {
+    // Validate interval time with fallbacks
+    if (!intervalTime || isNaN(intervalTime)) {
+      intervalTime = TriviaState.settings.intervalTime || 600000;
+    }
+    
+    // Update state
+    TriviaState.triviaActive = true;
+    TriviaState.nextQuestionTime = Date.now() + intervalTime;
+    
+    // Update UI
+    UI.setUIState("countdown");
+    this.updateCountdown(intervalTime);
+  },
+  
+  /**
+   * Check if it's time to request the next question
+   */
+  checkForNextQuestion() {
+    // Skip if trivia isn't active or if PubSub updated countdown
+    if (!TriviaState.triviaActive || !TriviaState.nextQuestionTime || TriviaState.countdownUpdatedByPubSub) {
+      return;
+    }
+    
+    const timeRemaining = TriviaState.nextQuestionTime - Date.now();
+    
+    // Update local countdown
+    this.updateCountdown(timeRemaining);
+    
+    // Request next question when time is up
+    if (timeRemaining <= 0 && !TriviaState.questionRequested) {
+      console.log("⏳ Countdown reached 0! Requesting next question");
+      TriviaState.questionRequested = true;
+      
+      this.requestQuestion();
+    }
+  },
+  
+  /**
+   * Handle question requests with smart retries
+   * @param {number} retryCount - Current retry attempt count
+   */
+  requestQuestion(retryCount = 0) {
+    if (retryCount > 3) {
+      console.error("❌ Maximum retry attempts reached for question request");
+      TriviaState.questionRequested = false;
+      return;
+    }
+    
+    fetch(`${TriviaState.getApiBaseUrl()}/get-next-question`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          console.warn(`⚠️ ${data.error}`);
+          
+          // Special handling for retry requests
+          if (data.retry) {
+            console.log("🔄 Server asked us to retry. Waiting briefly...");
+            setTimeout(() => {
+              this.requestQuestion(retryCount + 1);
+            }, 1000); // Wait 1 second before retry
+            return;
+          }
+          
+          // Reset request flag after delay to prevent spam
+          setTimeout(() => {
+            TriviaState.questionRequested = false;
+          }, 5000);
+          return;
+        }
+        
+        // Display question if valid
+        QuestionManager.displayQuestion(data);
+      })
+      .catch(error => {
+        console.error("❌ Error fetching next question:", error);
+        
+        // Retry on network errors
+        if (retryCount < 3) {
+          console.log(`🔄 Retrying question request (attempt ${retryCount + 1})...`);
+          setTimeout(() => {
+            this.requestQuestion(retryCount + 1);
+          }, 1000 * (retryCount + 1)); // Exponential backoff
+          return;
+        }
+        
+        // Reset request flag after delay
+        setTimeout(() => {
+          TriviaState.questionRequested = false;
+        }, 5000);
+      });
   }
-}};
+};
+
+/**
+ * Handle countdown update message
+ * @param {Object} data - Countdown data with timeRemaining
+ */
+function handleCountdownUpdate(data) {
+  console.log("⏱️ Received countdown update");
+  
+  if (!data.timeRemaining && data.timeRemaining !== 0) {
+    console.warn("⚠️ Missing timeRemaining in countdown update");
+    return;
+  }
+  
+  // Update countdown flag to prevent duplicate updates
+  TriviaState.countdownUpdatedByPubSub = true;
+  
+  // Update nextQuestionTime based on the timeRemaining from server
+  TriviaState.nextQuestionTime = Date.now() + data.timeRemaining;
+  
+  // Update the UI with the new time
+  UI.setUIState("countdown");
+  TimerManager.updateCountdown(data.timeRemaining);
+  
+  // Reset flag after a short delay to allow local updates again
+  setTimeout(() => {
+    TriviaState.countdownUpdatedByPubSub = false;
+  }, 2000);
+}
+
+/**
+ * Handle trivia end message
+ */
+function handleTriviaEnd() {
+  console.log("⛔ Trivia has ended");
+  TriviaState.triviaActive = false;
+  TriviaState.nextQuestionTime = null;
+  UI.setUIState("ended");
+}
   
   // ======================================================
   // 8. INITIALIZATION & EVENT LISTENERS

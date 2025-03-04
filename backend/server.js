@@ -1183,7 +1183,7 @@ async function setUsername(userId, username) {
       
       // Update username if we have one (either from request or from lookup)
       if (effectiveUsername) {
-        console.log('UPDATE USER SCORE RIGHT HERE BITCH: ' + cleanID + ' ' + effectiveUsername);
+        console.log(`✏️ Updating username for user ${cleanId}: ${effectiveUsername}`);
         await setUsername(cleanId, effectiveUsername);
         
         // If it's a generated username like "User-U7036", don't actually use it

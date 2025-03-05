@@ -1425,37 +1425,30 @@ const TwitchService = {
     console.log("✅ Twitch message listener set up");
   },
   
-  /**
-   * Initialize data loading after authentication
-   */
-  initializeAfterAuth() {
-    console.log("🔄 Loading initial data after Twitch auth");
-    
-    // Double-check we have required data
-    if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
-      console.warn("⚠️ Missing auth data for initialization, will retry after onAuthorized");
-      return;
-    }
-    
-    // Load categories from API or Twitch
-    ApiService.getCategories()
-      .then(() => {
-        UI.renderCategories();
-      })
-      .catch(error => {
-        console.error("❌ Failed to load categories:", error);
-      });
-    
-    // Load difficulties from API or Twitch
-    ApiService.getDifficulties()
-      .then(() => {
-        UI.renderDifficulties();
-      })
-      .catch(error => {
-        console.error("❌ Failed to load difficulties:", error);
-      });
-    
-    // Load broadcaster settings (filter preferences)
+/**
+ * Initialize data loading after authentication
+ */
+initializeAfterAuth() {
+  console.log("🔄 Loading initial data after Twitch auth");
+  
+  // Double-check we have required data
+  if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
+    console.warn("⚠️ Missing auth data for initialization, will retry after onAuthorized");
+    return;
+  }
+  
+  // Request categories via Twitch messaging first
+  this.sendMessage({
+    type: 'GET_CATEGORIES'
+  });
+  
+  // Request difficulties via Twitch messaging
+  this.sendMessage({
+    type: 'GET_DIFFICULTIES'
+  });
+  
+  // Load broadcaster settings (filter preferences) if API is available
+  if (typeof ApiService.getBroadcasterSettings === 'function') {
     ApiService.getBroadcasterSettings(TriviaState.data.broadcasterId)
       .then(() => {
         // Update UI checkboxes based on loaded settings
@@ -1466,13 +1459,20 @@ const TwitchService = {
       .catch(error => {
         console.error("❌ Failed to load broadcaster settings:", error);
       });
-    
-    // Request broadcaster settings via Twitch as fallback
-    this.sendMessage({
-      type: 'GET_BROADCASTER_SETTINGS',
-      broadcasterId: TriviaState.data.broadcasterId
-    });
-  },
+  }
+  
+  // Request broadcaster settings via Twitch as fallback
+  this.sendMessage({
+    type: 'GET_BROADCASTER_SETTINGS',
+    broadcasterId: TriviaState.data.broadcasterId
+  });
+  
+  // Directly render UI components if available
+  setTimeout(() => {
+    if (typeof UI.renderCategories === 'function') UI.renderCategories();
+    if (typeof UI.renderDifficulties === 'function') UI.renderDifficulties();
+  }, 1000); // Give time for Twitch messages to be received
+},
   
   /**
    * Handle received Twitch messages

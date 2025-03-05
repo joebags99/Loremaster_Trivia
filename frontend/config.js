@@ -669,37 +669,20 @@ const ApiService = {
     try {
       // Request new authorization from Twitch instead of just failing
       if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
-        console.log("🔄 Missing auth data, requesting new authorization from Twitch");
-        if (window.Twitch && window.Twitch.ext) {
-          window.Twitch.ext.actions.requestEBS({});
-          return true; // We've started the reauthorization process
+        console.log("🔄 Missing auth data, requesting new identity share from Twitch");
+        if (window.Twitch && window.Twitch.ext && window.Twitch.ext.actions) {
+          // Use the correct method
+          if (typeof window.Twitch.ext.actions.requestIdShare === 'function') {
+            window.Twitch.ext.actions.requestIdShare();
+            return true; // We've started the reauthorization process
+          }
         } else {
           console.error("❌ Twitch SDK not available for reauthorization");
           return false;
         }
       }
       
-      // Try to validate the session
-      const response = await fetch(`${CONFIG.API_BASE_URL()}/api/validate-session`, {
-        headers: {
-          'Authorization': `Bearer ${TriviaState.data.authToken}`
-        }
-      });
-      
-      if (response.ok) {
-        console.log("✅ API session validated successfully");
-        return true;
-      }
-      
-      console.warn("⚠️ API session invalid, requesting reauthorization");
-      
-      // Prompt Twitch to reauthorize if needed
-      if (window.Twitch && window.Twitch.ext) {
-        // This will trigger onAuthorized again
-        window.Twitch.ext.actions.requestEBS({});
-      }
-      
-      return false;
+      // Rest of your reconnect function...
     } catch (error) {
       console.error("❌ Error during API reconnection:", error);
       return false;
@@ -1574,8 +1557,12 @@ const TwitchService = {
     if (window.Twitch && window.Twitch.ext) {
       console.log("✅ Twitch Extension SDK available");
       
-      // Force a request for authorization
-      window.Twitch.ext.actions.requestEBS({});
+      // CORRECTED: Use proper authentication request method
+      // The previous method requestEBS doesn't exist
+      if (window.Twitch.ext.actions && typeof window.Twitch.ext.actions.requestIdShare === 'function') {
+        console.log("🔑 Requesting Twitch identity sharing");
+        window.Twitch.ext.actions.requestIdShare();
+      }
       
       // Try to load saved auth data first (before setting up listeners)
       this.loadSavedAuth();
@@ -1808,8 +1795,14 @@ setupAuthorization() {
    * Set up Twitch authorization handling
    */
   setupAuthorization() {
+    if (!window.Twitch || !window.Twitch.ext) {
+      console.error("❌ Cannot set up authorization: Twitch SDK not available");
+      return;
+    }
+  
     window.Twitch.ext.onAuthorized((auth) => {
-      console.log("✅ Extension authorized:", auth);
+      // Your existing auth handler code
+      console.log("✅ Extension authorized:", auth.channelId);
       
       // Store auth data in state
       TriviaState.setAuthData(auth.channelId, auth.token);

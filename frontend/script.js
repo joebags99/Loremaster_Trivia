@@ -234,13 +234,29 @@ function handleAuthorization(auth) {
     console.log("🚀 Trivia has started!");
     TriviaState.triviaActive = true;
     
-    // Set next question time
+    // Set next question time but don't show timer yet
     const intervalTime = data.intervalTime || TriviaState.settings.intervalTime;
     TriviaState.nextQuestionTime = Date.now() + intervalTime;
     
-    // Update UI
+    // Update UI state but don't show timer immediately
     UI.setUIState("countdown");
-    TimerManager.updateCountdown(intervalTime);
+    
+    // Hide the timer initially
+    if (UI.countdownTimer) {
+      UI.countdownTimer.style.display = "none";
+    }
+    
+    // Wait briefly for the correct time to arrive from server
+    setTimeout(() => {
+      // Calculate the current time remaining
+      const currentTime = TriviaState.nextQuestionTime - Date.now();
+      TimerManager.updateCountdown(currentTime);
+      
+      // Now show the timer with correct value
+      if (UI.countdownTimer) {
+        UI.countdownTimer.style.display = "inline";
+      }
+    }, 500); // Half-second delay
   }
   
  /**

@@ -1286,7 +1286,7 @@ const EventHandlers = {
 
 /**
  * ====================================
- * SECTION 6: Twitch Integration - FIXED
+ * SECTION 6: Twitch Integration
  * ====================================
  * Handles all interactions with the Twitch Extension SDK.
  * Responsible for authentication, messaging, and PubSub.
@@ -1301,12 +1301,14 @@ const TwitchService = {
     
     if (window.Twitch && window.Twitch.ext) {
       console.log("✅ Twitch Extension SDK available");
+      
+      // Try to load saved auth data first (before setting up listeners)
+      this.loadSavedAuth();
+      
+      // Set up listeners
       this.setupMessageListener();
       this.setupAuthorization();
       this.setupBroadcasterIdentity();
-      
-      // Load any saved auth data from sessionStorage
-      this.loadAuthData();
     } else {
       console.error("❌ Twitch Extension SDK not found");
       
@@ -1323,40 +1325,71 @@ const TwitchService = {
    * Ensures at least the broadcaster has their username in the system
    */
   setupBroadcasterIdentity() {
-    if (!window.Twitch || !window.Twitch.ext) {
+      if (!window.Twitch || !window.Twitch.ext) {
       console.error("❌ Twitch Extension SDK not available");
       return;
-    }
-    
-    // Broadcaster ID is set during onAuthorized
-    console.log("🎙️ Setting up broadcaster identity tracking");
+      }
+      
+      // Check if we get the channel info
+      window.Twitch.ext.onAuthorized((auth) => {
+      if (auth.channelId) {
+          console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
+          
+          // Store broadcaster ID for API calls
+          TriviaState.data.broadcasterId = auth.channelId;
+          
+          // Try to get broadcaster display name from Twitch SDK
+          if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
+          const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
+          console.log(`🎙️ Channel display name: ${broadcasterName}`);
+          
+          // Store for API calls
+          TriviaState.data.broadcasterName = broadcasterName;
+          
+          // Send to server - special case for broadcaster
+          this.sendServerMessage(auth.channelId, {
+              type: 'BROADCASTER_IDENTITY',
+              channelId: auth.channelId,
+              displayName: broadcasterName
+          });
+          } else {
+          // Try to resolve via API endpoint
+          fetch(`${CONFIG.API_BASE_URL()}/api/set-broadcaster-name`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+              channelId: auth.channelId,
+              jwt: auth.token
+              })
+          })
+          .then(response => response.json())
+          .then(data => {
+              if (data.success && data.displayName) {
+              console.log(`🎙️ Resolved broadcaster name via API: ${data.displayName}`);
+              TriviaState.data.broadcasterName = data.displayName;
+              }
+          })
+          .catch(error => {
+              console.error("❌ Failed to resolve broadcaster name:", error);
+          });
+          }
+      }
+      });
   },
 
   /**
-   * Set up Twitch authorization handling with improved persistence
-   */
-  setupAuthorization() {
-    window.Twitch.ext.onAuthorized((auth) => {
-      console.log("✅ Extension authorized:", auth);
-      
-      // Store auth data in state
-      TriviaState.setAuthData(auth.channelId, auth.token);
-      
-      // Store in sessionStorage for persistence
-      this.saveAuthData(auth);
-      
-      // Initialize app data after authorization
-      this.initializeAfterAuth();
-    });
-  },
-  
-  /**
-   * Save auth data to session storage
+   * Save current auth data to session storage
+   * This allows persistence when the panel is closed and reopened
    * @param {Object} auth - Auth data from Twitch
    */
-  saveAuthData(auth) {
+  saveAuthToSession(auth) {
     try {
-      // Save essential auth data for reconnection
+      if (!auth || !auth.channelId || !auth.token) {
+        console.warn("⚠️ Incomplete auth data, not saving to session storage");
+        return false;
+      }
+      
+      // Store essential auth data
       const authData = {
         channelId: auth.channelId,
         token: auth.token,
@@ -1365,42 +1398,67 @@ const TwitchService = {
         timestamp: Date.now()
       };
       
+      // Save to session storage
       sessionStorage.setItem('twitchAuthData', JSON.stringify(authData));
       console.log("💾 Auth data saved to session storage");
-    } catch (e) {
-      console.error("❌ Failed to save auth data to session storage:", e);
+      return true;
+    } catch (error) {
+      console.error("❌ Failed to save auth data to session storage:", error);
+      return false;
     }
   },
   
   /**
-   * Load auth data from session storage
+   * Load saved auth data from session storage
+   * Called during initialization before onAuthorized
    */
-  loadAuthData() {
+  loadSavedAuth() {
     try {
-      const authDataStr = sessionStorage.getItem('twitchAuthData');
-      if (authDataStr) {
-        const authData = JSON.parse(authDataStr);
-        
-        // Check if data is still fresh (1 hour expiry)
-        const isExpired = Date.now() - authData.timestamp > 3600000; // 1 hour
-        
-        if (isExpired) {
-          console.log("⚠️ Stored auth data is expired, waiting for new authorization");
-          sessionStorage.removeItem('twitchAuthData');
-          return;
-        }
-        
-        console.log("📂 Found saved auth data in session storage");
-        
-        // Set auth data in state for immediate use
-        TriviaState.setAuthData(authData.channelId, authData.token);
-        
-        // Initialize even before official auth completes
-        this.initializeAfterAuth();
+      const savedAuth = sessionStorage.getItem('twitchAuthData');
+      if (!savedAuth) return false;
+      
+      const authData = JSON.parse(savedAuth);
+      console.log("📂 Found saved auth data in session storage");
+      
+      // Check if data is still fresh (under 1 hour old)
+      const now = Date.now();
+      const age = now - (authData.timestamp || 0);
+      if (age > 3600000) { // 1 hour in milliseconds
+        console.warn("⚠️ Saved auth data is expired, waiting for new authorization");
+        sessionStorage.removeItem('twitchAuthData');
+        return false;
       }
-    } catch (e) {
-      console.error("❌ Failed to load auth data from session storage:", e);
+      
+      // Use saved auth data immediately
+      TriviaState.setAuthData(authData.channelId, authData.token);
+      console.log("🔑 Using saved auth data:", 
+        `Channel: ${authData.channelId}, Token: ${authData.token?.substring(0, 10)}...`);
+      
+      // Initialize immediately with saved data
+      this.initializeAfterAuth();
+      return true;
+    } catch (error) {
+      console.error("❌ Error loading saved auth data:", error);
+      return false;
     }
+  },
+
+  /**
+   * Set up Twitch authorization handling
+   */
+  setupAuthorization() {
+    window.Twitch.ext.onAuthorized((auth) => {
+      console.log("✅ Extension authorized:", auth);
+      
+      // Store auth data in state
+      TriviaState.setAuthData(auth.channelId, auth.token);
+      
+      // Save auth data for persistence between panel reloads
+      this.saveAuthToSession(auth);
+      
+      // Initialize app data after authorization
+      this.initializeAfterAuth();
+    });
   },
   
   /**
@@ -1425,30 +1483,31 @@ const TwitchService = {
     console.log("✅ Twitch message listener set up");
   },
   
-/**
- * Initialize data loading after authentication
- */
-initializeAfterAuth() {
-  console.log("🔄 Loading initial data after Twitch auth");
-  
-  // Double-check we have required data
-  if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
-    console.warn("⚠️ Missing auth data for initialization, will retry after onAuthorized");
-    return;
-  }
-  
-  // Request categories via Twitch messaging first
-  this.sendMessage({
-    type: 'GET_CATEGORIES'
-  });
-  
-  // Request difficulties via Twitch messaging
-  this.sendMessage({
-    type: 'GET_DIFFICULTIES'
-  });
-  
-  // Load broadcaster settings (filter preferences) if API is available
-  if (typeof ApiService.getBroadcasterSettings === 'function') {
+  /**
+   * Initialize data loading after authentication
+   */
+  initializeAfterAuth() {
+    console.log("🔄 Loading initial data after Twitch auth");
+    
+    // Load categories from API or Twitch
+    ApiService.getCategories()
+      .then(() => {
+        UI.renderCategories();
+      })
+      .catch(error => {
+        console.error("❌ Failed to load categories:", error);
+      });
+    
+    // Load difficulties from API or Twitch
+    ApiService.getDifficulties()
+      .then(() => {
+        UI.renderDifficulties();
+      })
+      .catch(error => {
+        console.error("❌ Failed to load difficulties:", error);
+      });
+    
+    // Load broadcaster settings (filter preferences)
     ApiService.getBroadcasterSettings(TriviaState.data.broadcasterId)
       .then(() => {
         // Update UI checkboxes based on loaded settings
@@ -1459,20 +1518,13 @@ initializeAfterAuth() {
       .catch(error => {
         console.error("❌ Failed to load broadcaster settings:", error);
       });
-  }
-  
-  // Request broadcaster settings via Twitch as fallback
-  this.sendMessage({
-    type: 'GET_BROADCASTER_SETTINGS',
-    broadcasterId: TriviaState.data.broadcasterId
-  });
-  
-  // Directly render UI components if available
-  setTimeout(() => {
-    if (typeof UI.renderCategories === 'function') UI.renderCategories();
-    if (typeof UI.renderDifficulties === 'function') UI.renderDifficulties();
-  }, 1000); // Give time for Twitch messages to be received
-},
+    
+    // Request broadcaster settings via Twitch as fallback
+    this.sendMessage({
+      type: 'GET_BROADCASTER_SETTINGS',
+      broadcasterId: TriviaState.data.broadcasterId
+    });
+  },
   
   /**
    * Handle received Twitch messages
@@ -1622,54 +1674,220 @@ initializeAfterAuth() {
       return { success: false, error: error.message };
     }
   },
-
-    /**
-     * Add mock Twitch debug controls
-     * Only used in development environment
-     */
-    addMockTwitchControls() {
-      // Only add if we're in development
-      if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        return;
+  
+  /**
+   * Create mock Twitch for testing in development
+   * Simulates Twitch SDK for local development
+   */
+  createMockForTesting() {
+    console.warn("⚠️ Creating mock Twitch object for testing");
+    
+    // Create mock Twitch object
+    window.Twitch = {
+      ext: {
+        onAuthorized: (callback) => {
+          console.log("🔧 Mock Twitch auth triggered");
+          
+          // Simulate auth with test broadcaster ID
+          setTimeout(() => {
+            callback({
+              userId: "mock-user-123",
+              channelId: "70361469", // Test broadcaster ID
+              token: "mock-token-for-testing"
+            });
+          }, 500);
+        },
+        
+        listen: (type, callback) => {
+          console.log("🔧 Mock Twitch listen registered for:", type);
+          window.mockTwitchCallback = callback; // Store for simulated events
+        },
+        
+        send: (target, contentType, message) => {
+          console.log("🔧 Mock Twitch send:", { target, contentType, message });
+          
+          // Simulate responses based on message type
+          this.simulateMockResponse(message);
+        }
       }
-      
-      // Create a floating debug panel
-      const debugPanel = document.createElement('div');
-      debugPanel.style.position = 'fixed';
-      debugPanel.style.bottom = '10px';
-      debugPanel.style.right = '10px';
-      debugPanel.style.padding = '10px';
-      debugPanel.style.background = 'rgba(0,0,0,0.8)';
-      debugPanel.style.color = '#fff';
-      debugPanel.style.borderRadius = '5px';
-      debugPanel.style.zIndex = '9999';
-      debugPanel.style.fontSize = '12px';
-      debugPanel.innerHTML = `
-        <div style="margin-bottom:8px"><strong>Mock Twitch Controls</strong></div>
-        <button id="mock-trivia-start" style="margin:2px;padding:5px">Simulate Trivia Start</button>
-        <button id="mock-trivia-end" style="margin:2px;padding:5px">Simulate Trivia End</button>
-      `;
-      
-      document.body.appendChild(debugPanel);
-      
-      // Add event listeners
-      document.getElementById('mock-trivia-start').addEventListener('click', () => {
-        if (window.mockTwitchCallback) {
-          window.mockTwitchCallback('broadcast', 'application/json',
-            JSON.stringify({ type: 'TRIVIA_START' })
-          );
-        }
-      });
-      
-      document.getElementById('mock-trivia-end').addEventListener('click', () => {
-        if (window.mockTwitchCallback) {
-          window.mockTwitchCallback('broadcast', 'application/json',
-            JSON.stringify({ type: 'TRIVIA_END' })
-          );
-        }
-      });
+    };
+    
+    // Re-initialize with mock
+    this.init();
+    
+    // Add some debug controls for mock
+    this.addMockTwitchControls();
+  },
+  
+  /**
+   * Simulate response for mock Twitch
+   * @param {Object} message - The message to respond to
+   */
+  simulateMockResponse(message) {
+    if (!message || !message.type) return;
+    
+    setTimeout(() => {
+      switch (message.type) {
+        case 'GET_CATEGORIES':
+          const mockCategories = [
+            { id: "gaming", name: "Gaming", questionCount: 50 },
+            { id: "history", name: "History", questionCount: 30 },
+            { id: "science", name: "Science", questionCount: 25 },
+            { id: "music", name: "Music", questionCount: 45 },
+            { id: "movies", name: "Movies & TV", questionCount: 60 }
+          ];
+          
+          if (window.mockTwitchCallback) {
+            window.mockTwitchCallback('broadcast', 'application/json', 
+              JSON.stringify({
+                type: 'CATEGORIES_RESPONSE',
+                categories: mockCategories
+              })
+            );
+          }
+          
+          // Also update state directly
+          TriviaState.setCategories(mockCategories);
+          UI.renderCategories();
+          break;
+          
+        case 'GET_DIFFICULTIES':
+          const mockDifficulties = [
+            { difficulty: "Easy", count: 40 },
+            { difficulty: "Medium", count: 50 },
+            { difficulty: "Hard", count: 15 }
+          ];
+          
+          if (window.mockTwitchCallback) {
+            window.mockTwitchCallback('broadcast', 'application/json', 
+              JSON.stringify({
+                type: 'DIFFICULTIES_RESPONSE',
+                difficulties: mockDifficulties
+              })
+            );
+          }
+          
+          // Also update state directly
+          TriviaState.setDifficulties(mockDifficulties);
+          UI.renderDifficulties();
+          break;
+          
+        case 'GET_QUESTION_STATS':
+          if (window.mockTwitchCallback) {
+            window.mockTwitchCallback('broadcast', 'application/json', 
+              JSON.stringify({
+                type: 'QUESTION_STATS_RESPONSE',
+                totalMatching: 85,
+                filters: {
+                  categories: message.categories,
+                  difficulties: message.difficulties
+                }
+              })
+            );
+          }
+          
+          // Also update state directly
+          TriviaState.setTotalQuestions(85);
+          UI.renderQuestionStats();
+          break;
+          
+        case 'GET_BROADCASTER_SETTINGS':
+          if (window.mockTwitchCallback) {
+            window.mockTwitchCallback('broadcast', 'application/json',
+              JSON.stringify({
+                type: 'BROADCASTER_SETTINGS_RESPONSE',
+                settings: {
+                  broadcaster_id: message.broadcasterId || '70361469',
+                  active_categories: ['gaming', 'science'],
+                  active_difficulties: ['Easy', 'Medium', 'Hard']
+                }
+              })
+            );
+          }
+          break;
+          
+        case 'UPDATE_SETTINGS':
+          if (window.mockTwitchCallback) {
+            window.mockTwitchCallback('broadcast', 'application/json',
+              JSON.stringify({
+                type: 'SETTINGS_UPDATE',
+                answerTime: message.answerTime,
+                intervalTime: message.intervalTime
+              })
+            );
+          }
+          break;
+          
+        case 'START_TRIVIA':
+          if (window.mockTwitchCallback) {
+            window.mockTwitchCallback('broadcast', 'application/json',
+              JSON.stringify({
+                type: 'TRIVIA_START'
+              })
+            );
+          }
+          break;
+          
+        case 'END_TRIVIA':
+          if (window.mockTwitchCallback) {
+            window.mockTwitchCallback('broadcast', 'application/json',
+              JSON.stringify({
+                type: 'TRIVIA_END'
+              })
+            );
+          }
+          break;
+      }
+    }, 500); // Simulate network delay
+  },
+  
+  /**
+   * Add mock Twitch debug controls
+   * Only used in development environment
+   */
+  addMockTwitchControls() {
+    // Only add if we're in development
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return;
     }
-  };
+    
+    // Create a floating debug panel
+    const debugPanel = document.createElement('div');
+    debugPanel.style.position = 'fixed';
+    debugPanel.style.bottom = '10px';
+    debugPanel.style.right = '10px';
+    debugPanel.style.padding = '10px';
+    debugPanel.style.background = 'rgba(0,0,0,0.8)';
+    debugPanel.style.color = '#fff';
+    debugPanel.style.borderRadius = '5px';
+    debugPanel.style.zIndex = '9999';
+    debugPanel.style.fontSize = '12px';
+    debugPanel.innerHTML = `
+      <div style="margin-bottom:8px"><strong>Mock Twitch Controls</strong></div>
+      <button id="mock-trivia-start" style="margin:2px;padding:5px">Simulate Trivia Start</button>
+      <button id="mock-trivia-end" style="margin:2px;padding:5px">Simulate Trivia End</button>
+    `;
+    
+    document.body.appendChild(debugPanel);
+    
+    // Add event listeners
+    document.getElementById('mock-trivia-start').addEventListener('click', () => {
+      if (window.mockTwitchCallback) {
+        window.mockTwitchCallback('broadcast', 'application/json',
+          JSON.stringify({ type: 'TRIVIA_START' })
+        );
+      }
+    });
+    
+    document.getElementById('mock-trivia-end').addEventListener('click', () => {
+      if (window.mockTwitchCallback) {
+        window.mockTwitchCallback('broadcast', 'application/json',
+          JSON.stringify({ type: 'TRIVIA_END' })
+        );
+      }
+    });
+  }
+};
 
 /**
  * ====================================

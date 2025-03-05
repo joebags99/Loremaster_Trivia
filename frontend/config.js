@@ -667,10 +667,16 @@ const ApiService = {
     console.log("🔄 Attempting API reconnection");
     
     try {
-      // Check if we still have auth data
+      // Request new authorization from Twitch instead of just failing
       if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
-        console.error("❌ Missing auth data for reconnection");
-        return false;
+        console.log("🔄 Missing auth data, requesting new authorization from Twitch");
+        if (window.Twitch && window.Twitch.ext) {
+          window.Twitch.ext.actions.requestEBS({});
+          return true; // We've started the reauthorization process
+        } else {
+          console.error("❌ Twitch SDK not available for reauthorization");
+          return false;
+        }
       }
       
       // Try to validate the session
@@ -1567,6 +1573,9 @@ const TwitchService = {
     
     if (window.Twitch && window.Twitch.ext) {
       console.log("✅ Twitch Extension SDK available");
+      
+      // Force a request for authorization
+      window.Twitch.ext.actions.requestEBS({});
       
       // Try to load saved auth data first (before setting up listeners)
       this.loadSavedAuth();

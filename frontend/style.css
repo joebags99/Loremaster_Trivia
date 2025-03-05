@@ -1,4 +1,4 @@
-/* 🧙‍♂️ Loremaster Trivia - Modern Fantasy UI 🧙‍♂️ */
+/* 🧙‍♂️ Loremaster Trivia - Modern Fantasy UI with Enhanced Responsiveness 🧙‍♂️ */
 
 /* Modern Font Stack with Fantasy Vibes */
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Josefin+Sans:wght@300;400;600&display=swap');
@@ -35,16 +35,21 @@
 }
 
 /* Base Styles & Reset */
+*, *:before, *:after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 html, body {
   background-color: var(--background) !important;
   color: var(--text-light);
   font-family: 'Josefin Sans', sans-serif;
-  margin: 0;
-  padding: 0;
   line-height: 1.5;
   overflow: hidden;
   height: 100%;
   width: 100%;
+  font-size: 16px; /* Base font size */
 }
 
 /* Typography */
@@ -85,6 +90,11 @@ h1, h2, h3, h4, .fantasy-title {
   100% { border-color: var(--primary-light); }
 }
 
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 /* 📜 Waiting Screen (Before Trivia Starts) */
 #waiting-screen {
   display: flex;
@@ -93,14 +103,16 @@ h1, h2, h3, h4, .fantasy-title {
   justify-content: center;
   height: 100vh;
   text-align: center;
-  font-size: clamp(18px, 4vw, 32px);
+  font-size: clamp(16px, 3vw, 24px);
   background: linear-gradient(135deg, var(--background) 0%, var(--surface) 50%, var(--background) 100%);
-  border-radius: var(--radius-large);
+  border-radius: var(--radius-medium);
   box-shadow: 0 0 var(--glow-strength) rgba(107, 66, 230, 0.3);
-  padding: 30px;
+  padding: clamp(15px, 4vw, 30px);
   animation: fadeIn var(--transition-slow) ease-in-out;
   position: relative;
   overflow: hidden;
+  width: 100%;
+  max-width: 100%;
 }
 
 #waiting-screen::after {
@@ -120,6 +132,10 @@ h1, h2, h3, h4, .fantasy-title {
 #waiting-screen h2, #waiting-screen h3 {
   position: relative;
   z-index: 2;
+  width: 100%;
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 #waiting-text {
@@ -127,21 +143,22 @@ h1, h2, h3, h4, .fantasy-title {
   color: var(--text-accent);
   text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
   animation: glowingText 3s infinite ease-in-out;
-  margin-bottom: 24px;
-  max-width: 80%;
+  margin-bottom: clamp(12px, 3vw, 24px);
+  max-width: 90%;
+  font-size: clamp(16px, 4vw, 28px);
 }
 
 /* ⏳ Countdown Timer */
 #countdown-timer {
-  font-size: clamp(28px, 5vw, 42px);
+  font-size: clamp(22px, 5vw, 38px);
   font-weight: bold;
   font-family: 'Cinzel', serif;
   color: var(--accent);
   background: linear-gradient(135deg, var(--surface-light) 0%, var(--surface) 100%);
-  padding: 12px 24px;
+  padding: clamp(8px, 2vw, 12px) clamp(15px, 3vw, 24px);
   border-radius: var(--radius-medium);
   box-shadow: 0 0 20px rgba(255, 204, 0, 0.3), inset 0 0 8px rgba(0, 0, 0, 0.4);
-  margin: 20px 0;
+  margin: clamp(10px, 3vw, 20px) 0;
   border: 2px solid var(--primary-light);
   animation: borderPulse 4s infinite ease-in-out;
   position: relative;
@@ -154,25 +171,26 @@ h1, h2, h3, h4, .fantasy-title {
   flex-direction: column;
   align-items: center;
   background: linear-gradient(135deg, rgba(106, 61, 232, 0.2) 0%, rgba(69, 38, 158, 0.4) 100%);
-  padding: 15px 25px;
+  padding: clamp(10px, 3vw, 15px) clamp(15px, 3vw, 25px);
   border-radius: var(--radius-medium);
   border: 1px solid var(--primary-light);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-  margin-top: 30px;
+  margin-top: clamp(15px, 4vw, 30px);
   position: relative;
   z-index: 2;
-  min-width: 200px;
+  min-width: clamp(180px, 70%, 250px);
+  max-width: 90%;
 }
 
 .total-score {
-  font-size: 1.3em;
+  font-size: clamp(1rem, 3vw, 1.3rem);
   color: var(--text-accent);
   font-weight: bold;
   margin-bottom: 8px;
 }
 
 .session-score {
-  font-size: 1em;
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
   color: var(--primary-light);
   border-top: 1px solid rgba(255, 204, 0, 0.2);
   padding-top: 8px;
@@ -186,17 +204,18 @@ h1, h2, h3, h4, .fantasy-title {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  max-width: 800px;
-  width: 92%;
+  width: clamp(280px, 95%, 800px);
   margin: auto;
-  padding: 30px;
+  padding: clamp(10px, 3vw, 30px);
   background: linear-gradient(135deg, var(--surface) 0%, var(--surface-light) 50%, var(--surface) 100%);
-  border-radius: var(--radius-large);
+  border-radius: var(--radius-medium);
   border: 2px solid var(--primary-light);
   box-shadow: 0 0 25px rgba(106, 61, 232, 0.3), inset 0 0 15px rgba(0, 0, 0, 0.3);
   animation: fadeInScale var(--transition-medium) ease-out;
   position: relative;
   overflow: hidden;
+  max-height: 100vh;
+  overflow-y: auto;
 }
 
 #quiz-container::before {
@@ -213,16 +232,18 @@ h1, h2, h3, h4, .fantasy-title {
 /* 📜 Question Box - Enhanced Mystical Scroll */
 #question-box {
   background: linear-gradient(180deg, var(--primary-dark) 0%, var(--background) 100%);
-  padding: 25px 30px;
+  padding: clamp(10px, 3vw, 25px) clamp(12px, 3vw, 25px);
   width: 100%;
   border-radius: var(--radius-medium);
   border: 2px solid var(--primary-light);
   box-shadow: 0 0 20px rgba(106, 61, 232, 0.3);
   color: var(--text-light);
-  font-size: clamp(18px, 4vw, 24px);
-  margin-bottom: 25px;
+  margin-bottom: clamp(12px, 3vw, 25px);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 #question-box::after {
@@ -239,21 +260,26 @@ h1, h2, h3, h4, .fantasy-title {
 #question-text {
   color: var(--text-light) !important;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5) !important;
-  font-size: clamp(18px, 3vw, 24px) !important;
+  font-size: clamp(14px, 3vw, 22px) !important;
   font-weight: 600;
   margin: 0;
   padding: 0;
   line-height: 1.5;
+  width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+  text-align: center;
 }
 
 /* Difficulty indicator with modern styling */
 .difficulty-indicator {
   display: inline-block;
-  padding: 6px 14px;
+  padding: clamp(4px, 1.5vw, 6px) clamp(8px, 2vw, 14px);
   border-radius: 20px;
-  font-size: 0.9rem;
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
   font-weight: bold;
-  margin-bottom: 12px;
+  margin-bottom: clamp(8px, 2vw, 12px);
   color: white;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -291,11 +317,11 @@ h1, h2, h3, h4, .fantasy-title {
 /* ⏳ Timer Bar - Magical Energy */
 #timer-bar {
   width: 100%;
-  height: 14px;
+  height: clamp(8px, 2vw, 14px);
   background: linear-gradient(90deg, var(--primary-light), var(--accent));
   box-shadow: 0 0 10px var(--primary-light), inset 0 0 4px rgba(0, 0, 0, 0.5);
   border-radius: 10px;
-  margin-bottom: 20px;
+  margin-bottom: clamp(12px, 3vw, 20px);
   position: relative;
   overflow: hidden;
 }
@@ -313,19 +339,14 @@ h1, h2, h3, h4, .fantasy-title {
   background-size: 200% 100%;
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
 /* 🔮 Answer Choices - Mystic Buttons */
 #choices-container {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 15px;
+  gap: clamp(6px, 1.5vw, 12px);
   width: 100%;
-  margin-top: 15px;
+  margin-top: clamp(10px, 2vw, 15px);
 }
 
 .choice-button {
@@ -334,15 +355,23 @@ h1, h2, h3, h4, .fantasy-title {
   color: var(--text-light) !important;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   font-family: 'Josefin Sans', sans-serif;
-  font-size: clamp(15px, 3vw, 18px);
-  padding: 15px 20px;
-  width: 48%;
+  font-size: clamp(13px, 2.5vw, 18px);
+  padding: clamp(8px, 2vw, 15px) clamp(10px, 2vw, 20px);
+  width: calc(50% - clamp(4px, 1vw, 8px));
   cursor: pointer;
   border-radius: var(--radius-medium);
   transition: all var(--transition-medium) cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   position: relative;
   overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+  min-height: clamp(40px, 10vw, 60px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .choice-button::before {
@@ -357,9 +386,9 @@ h1, h2, h3, h4, .fantasy-title {
 }
 
 .choice-button:hover {
-  transform: translateY(-5px) scale(1.03);
+  transform: translateY(-3px) scale(1.03);
   border-color: var(--accent);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3), 0 0 15px var(--primary-light);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3), 0 0 15px var(--primary-light);
 }
 
 .choice-button:active {
@@ -393,7 +422,7 @@ h1, h2, h3, h4, .fantasy-title {
 .correct::after {
   content: '✓';
   position: absolute;
-  right: 15px;
+  right: clamp(8px, 2vw, 15px);
   font-size: 1.2em;
 }
 
@@ -413,7 +442,7 @@ h1, h2, h3, h4, .fantasy-title {
 .wrong.selected::after {
   content: '✗';
   position: absolute;
-  right: 15px;
+  right: clamp(8px, 2vw, 15px);
   font-size: 1.2em;
 }
 
@@ -427,18 +456,20 @@ h1, h2, h3, h4, .fantasy-title {
 
 /* Points info styling - Enhanced */
 .points-info {
-  margin-top: 15px;
+  margin-top: clamp(10px, 2vw, 15px);
   font-weight: bold;
   animation: fadeIn 0.5s ease-in-out;
   background: linear-gradient(135deg, rgba(106, 61, 232, 0.1) 0%, rgba(255, 204, 0, 0.1) 100%);
-  padding: 10px 15px;
+  padding: clamp(8px, 2vw, 15px);
   border-radius: var(--radius-small);
   border: 1px solid rgba(255, 204, 0, 0.3);
+  width: calc(100% - 20px);
+  text-align: center;
 }
 
 .points-info .points {
   color: var(--accent);
-  font-size: 1.3rem;
+  font-size: clamp(1rem, 2.5vw, 1.3rem);
   display: block;
   text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
   animation: glowingText 2s infinite ease-in-out;
@@ -446,32 +477,9 @@ h1, h2, h3, h4, .fantasy-title {
 
 .points-info .time-bonus {
   color: #7bed9f;
-  font-size: 1rem;
+  font-size: clamp(0.8rem, 2vw, 1rem);
   display: block;
   margin-top: 5px;
-}
-
-/* ✅ Responsive Adjustments */
-@media (max-width: 768px) {
-  #quiz-container {
-    padding: 20px;
-    max-width: 95%;
-  }
-  
-  .choice-button {
-    width: 100%;
-    margin: 8px 0;
-    font-size: clamp(14px, 3vw, 18px);
-  }
-  
-  #question-box {
-    padding: 20px;
-  }
-  
-  #countdown-timer {
-    font-size: clamp(22px, 4vw, 32px);
-    padding: 10px 20px;
-  }
 }
 
 /* Modern Trivia Ended Screen */
@@ -483,22 +491,23 @@ h1, h2, h3, h4, .fantasy-title {
   height: 100vh;
   text-align: center;
   background: linear-gradient(135deg, var(--background) 0%, var(--surface) 50%, var(--background) 100%);
-  border-radius: var(--radius-large);
+  border-radius: var(--radius-medium);
   box-shadow: 0 0 var(--glow-strength) rgba(107, 66, 230, 0.3);
-  padding: 30px;
+  padding: clamp(15px, 4vw, 30px);
   animation: fadeIn var(--transition-slow) ease-in-out;
+  width: 100%;
 }
 
 #trivia-ended-screen h2 {
-  font-size: clamp(28px, 5vw, 38px);
-  margin-bottom: 20px;
+  font-size: clamp(20px, 4vw, 36px);
+  margin-bottom: clamp(10px, 3vw, 20px);
   animation: glowingText 3s infinite ease-in-out;
 }
 
 #trivia-ended-screen p {
-  font-size: clamp(16px, 3vw, 20px);
+  font-size: clamp(14px, 3vw, 20px);
   color: var(--text-light);
-  max-width: 600px;
+  max-width: 90%;
   line-height: 1.6;
 }
 
@@ -509,33 +518,35 @@ h1, h2, h3, h4, .fantasy-title {
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, var(--surface-light) 0%, var(--surface) 100%);
-  padding: 15px 25px;
+  padding: clamp(12px, 3vw, 20px);
   border-radius: var(--radius-medium);
   border: 2px solid var(--primary-light);
   box-shadow: 0 5px 20px rgba(0, 0, 0, 0.4);
   z-index: 100;
   text-align: center;
   max-width: 90%;
-  width: 400px;
+  width: clamp(250px, 80%, 400px);
   animation: fadeIn var(--transition-medium) ease-out;
 }
 
 #identity-prompt p {
-  margin-bottom: 15px;
+  margin-bottom: clamp(10px, 2vw, 15px);
   color: var(--text-light);
+  font-size: clamp(14px, 2.5vw, 16px);
 }
 
 #share-identity-btn {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   color: white;
   border: none;
-  padding: 10px 20px;
+  padding: clamp(8px, 2vw, 12px) clamp(12px, 3vw, 20px);
   border-radius: var(--radius-small);
   font-family: 'Josefin Sans', sans-serif;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-medium) ease;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  font-size: clamp(14px, 2.5vw, 16px);
 }
 
 #share-identity-btn:hover {
@@ -565,14 +576,99 @@ h1, h2, h3, h4, .fantasy-title {
   100% { transform: translate(var(--tx, 20px), var(--ty, -20px)) scale(1); opacity: 0; }
 }
 
-.choice-button:hover::after {
-  content: '';
-  position: absolute;
-  top: var(--y, 50%);
-  left: var(--x, 50%);
-  width: 4px;
-  height: 4px;
-  background: white;
-  border-radius: 50%;
-  animation: sparkle 1s ease-in-out forwards;
+/* Tiny Devices (320px and below) */
+@media (max-width: 320px) {
+  #waiting-text {
+    font-size: clamp(14px, 5vw, 18px);
+  }
+  
+  #countdown-timer {
+    font-size: clamp(16px, 6vw, 22px);
+    padding: 6px 12px;
+  }
+  
+  .choice-button {
+    font-size: clamp(11px, 4vw, 14px);
+    padding: 6px 8px;
+    min-height: 36px;
+  }
+  
+  #question-text {
+    font-size: clamp(12px, 4vw, 16px) !important;
+  }
+  
+  .difficulty-indicator {
+    font-size: 0.6rem;
+    padding: 3px 8px;
+  }
+  
+  #timer-bar {
+    height: 6px;
+  }
+  
+  .points-info .points {
+    font-size: 0.9rem;
+  }
+  
+  .points-info .time-bonus {
+    font-size: 0.7rem;
+  }
+}
+
+/* Extra small devices (phones, 320px to 480px) */
+@media (min-width: 321px) and (max-width: 480px) {
+  .choice-button {
+    width: 100%;  /* Full width on very small screens */
+    margin-bottom: 6px;
+  }
+  
+  #quiz-container {
+    padding: 12px;
+  }
+  
+  #question-box {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+}
+
+/* Small devices (large phones, 480px to 767px) */
+@media (min-width: 481px) and (max-width: 767px) {
+  .choice-button {
+    width: calc(50% - 8px);  /* Two columns with small gap */
+  }
+  
+  #quiz-container {
+    padding: 15px;
+  }
+  
+  #question-box {
+    padding: 15px;
+  }
+}
+
+/* Medium devices (tablets, 768px and up) */
+@media (min-width: 768px) {
+  .choice-button {
+    width: calc(50% - 10px);  /* Two columns with medium gap */
+  }
+  
+  #choices-container {
+    gap: 20px;
+  }
+}
+
+/* Fix for Twitch panels where height might be constrained */
+@media (max-height: 600px) {
+  #waiting-screen, #trivia-ended-screen {
+    height: auto;
+    min-height: 100%;
+    padding-top: 15px;
+    padding-bottom: 15px;
+  }
+  
+  #quiz-container {
+    max-height: 95vh;
+    overflow-y: auto;
+  }
 }

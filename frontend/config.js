@@ -234,270 +234,210 @@ const CONFIG = {
     }
   };
 
-  /**
+/**
  * ====================================
- * SECTION 3: API Services
+ * SECTION 3: API Services - FIXED
  * ====================================
  * Handles all communication with the backend server.
  * Provides consistent error handling and fallback mechanisms.
  */
 
 const ApiService = {
-    /**
-     * Core API request method with error handling
-     * @param {string} endpoint - API endpoint path
-     * @param {object} options - Fetch options
-     * @returns {Promise} - JSON response or error
-     */
-    async request(endpoint, options = {}) {
-      const url = `${CONFIG.API_BASE_URL()}${endpoint}`;
+  /**
+   * Core API request method with improved error handling
+   * @param {string} endpoint - API endpoint path
+   * @param {object} options - Fetch options
+   * @returns {Promise} - JSON response or error
+   */
+  async request(endpoint, options = {}) {
+    const url = `${CONFIG.API_BASE_URL()}${endpoint}`;
+    
+    try {
+      console.log(`🔍 API Request: ${options.method || 'GET'} ${url}`);
       
-      try {
-        console.log(`🔍 API Request: ${options.method || 'GET'} ${url}`);
-        const response = await fetch(url, options);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        return await response.json();
-      } catch (error) {
-        console.error(`❌ API Error (${endpoint}):`, error);
-        throw error;
-      }
-    },
-    
-    /**
-     * Category-related API methods
-     */
-    async getCategories() {
-      return this.request('/api/categories')
-        .then(data => {
-          console.log(`✅ Retrieved ${data.categories?.length || 0} categories`);
-          TriviaState.setCategories(data.categories);
-          return data.categories;
-        })
-        .catch(error => {
-          console.error("❌ Failed to load categories, using Twitch fallback", error);
-          // Fallback to Twitch messaging
-          TwitchService.sendMessage({type: 'GET_CATEGORIES'});
-          return [];
-        });
-    },
-    
-    /**
-     * Difficulty-related API methods
-     */
-    async getDifficulties() {
-      return this.request('/api/difficulties')
-        .then(data => {
-          console.log(`✅ Retrieved ${data.difficulties?.length || 0} difficulties`);
-          TriviaState.setDifficulties(data.difficulties);
-          return data.difficulties;
-        })
-        .catch(error => {
-          console.error("❌ Failed to load difficulties, using Twitch fallback", error);
-          // Fallback to Twitch messaging
-          TwitchService.sendMessage({type: 'GET_DIFFICULTIES'});
-          return [];
-        });
-    },
-    
-    /**
-     * Broadcaster settings methods
-     */
-    async getBroadcasterSettings(broadcasterId) {
-      if (!broadcasterId) {
-        console.error("❌ Missing broadcaster ID for settings fetch");
-        return null;
+      // Add authentication if available
+      if (TriviaState.data.authToken && !options.headers?.Authorization) {
+        options.headers = {
+          ...options.headers,
+          'Authorization': `Bearer ${TriviaState.data.authToken}`
+        };
       }
       
-      return this.request(`/api/settings/${broadcasterId}`)
-        .then(data => {
-          if (data.settings) {
-            TriviaState
-              .setSelectedCategories(data.settings.active_categories)
-              .setSelectedDifficulties(data.settings.active_difficulties);
-            
-            console.log("✅ Loaded broadcaster settings from API");
-          }
-          return data.settings;
-        })
-        .catch(error => {
-          console.error("❌ Failed to fetch broadcaster settings", error);
-          return null;
-        });
-    },
-    
-    async saveSettings(settings) {
-      if (!settings || !settings.answerTime || !settings.intervalTime) {
-        return { success: false, error: "Invalid settings data" };
+      const response = await fetch(url, options);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error(`❌ API Error (${response.status}):`, errorData);
+        throw new Error(`HTTP error ${response.status}: ${errorData.error || response.statusText}`);
       }
       
-      return this.request('/update-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      })
-      .then(data => {
-        console.log("✅ Settings saved successfully via API");
-        TriviaState.updateSettings(settings);
-        return data;
-      })
-      .catch(error => {
-        console.error("❌ Error saving settings via API, using Twitch fallback", error);
-        // Fallback to Twitch messaging
-        TwitchService.sendMessage({
-          type: 'UPDATE_SETTINGS',
-          ...settings
-        });
-        
-        // Return a fake success response for the UI
-        return { success: true, message: "Settings sent via Twitch" };
-      });
-    },
-    
-    async saveFilters(broadcasterId, filters) {
-      if (!broadcasterId) {
-        return { success: false, error: "Missing broadcaster ID" };
-      }
-      
-      return this.request(`/api/settings/${broadcasterId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activeCategories: filters.categories,
-          activeDifficulties: filters.difficulties
-        })
-      })
-      .then(data => {
-        console.log("✅ Filters saved successfully via API");
-        if (data.questionCount) {
-          TriviaState.setTotalQuestions(data.questionCount);
-        }
-        return data;
-      })
-      .catch(error => {
-        console.error("❌ Error saving filters via API, using Twitch fallback", error);
-        // Fallback to Twitch messaging
-        TwitchService.sendMessage({
-          type: 'SAVE_FILTERS',
-          broadcasterId: broadcasterId,
-          activeCategories: filters.categories,
-          activeDifficulties: filters.difficulties
-        });
-        
-        // Return a fake success response for the UI
-        return { success: true, message: "Filters sent via Twitch" };
-      });
-    },
-    
-    /**
-     * Question stats API methods
-     */
-    async getQuestionStats(categories = [], difficulties = []) {
-      // Format parameters for URL
-      const params = new URLSearchParams();
-      if (categories.length > 0) params.append('categories', categories.join(','));
-      if (difficulties.length > 0) params.append('difficulties', difficulties.join(','));
-      params.append('limit', '0'); // Don't return actual questions, just count
-      
-      return this.request(`/api/sample-questions?${params.toString()}`)
-        .then(data => {
-          console.log(`✅ Found ${data.totalMatching || 0} matching questions`);
-          TriviaState.setTotalQuestions(data.totalMatching || 0);
-          return data;
-        })
-        .catch(error => {
-          console.error("❌ Error getting question stats via API", error);
-          // Fallback to Twitch messaging
-          TwitchService.sendMessage({
-            type: 'GET_QUESTION_STATS',
-            categories,
-            difficulties
-          });
-          
-          // Return a minimal response for UI updates
-          return { 
-            totalMatching: TriviaState.data.totalQuestions, 
-            filters: { categories, difficulties } 
-          };
-        });
-    },
-    
-    /**
-     * Leaderboard API methods
-     */
-    async getLeaderboard() {
-      return this.request('/api/leaderboard')
-        .then(data => {
-          console.log(`✅ Retrieved leaderboard data: ${data.total?.length || 0} total / ${data.session?.length || 0} session entries`);
-          TriviaState.setLeaderboardData(data);
-          return data;
-        })
-        .catch(error => {
-          console.error("❌ Error fetching leaderboard:", error);
-          return { total: [], session: [] };
-        });
-    },
-    
-    /**
-     * Trivia control API methods
-     */
-    async startTrivia(broadcasterId) {
-      return this.request('/start-trivia', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ broadcasterId })
-      })
-      .then(data => {
-        console.log("✅ Trivia started via API:", data);
-        TriviaState.setTriviaActive(true);
-        return data;
-      })
-      .catch(error => {
-        console.error("❌ Error starting trivia via API, using Twitch fallback", error);
-        // Fallback to Twitch messaging
-        TwitchService.sendMessage({
-          type: 'START_TRIVIA',
-          broadcasterId
-        });
-        
-        // Set active state anyway for UI
-        TriviaState.setTriviaActive(true);
-        
-        // Return a fake success response for the UI
-        return { success: true, message: "Started via Twitch" };
-      });
-    },
-    
-    async endTrivia(broadcasterId) {
-      return this.request('/end-trivia', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ broadcasterId })
-      })
-      .then(data => {
-        console.log("✅ Trivia ended via API:", data);
-        TriviaState.setTriviaActive(false);
-        return data;
-      })
-      .catch(error => {
-        console.error("❌ Error ending trivia via API, using Twitch fallback", error);
-        // Fallback to Twitch messaging
-        TwitchService.sendMessage({
-          type: 'END_TRIVIA',
-          broadcasterId
-        });
-        
-        // Set active state anyway for UI
-        TriviaState.setTriviaActive(false);
-        
-        // Return a fake success response for the UI
-        return { success: true, message: "Ended via Twitch" };
-      });
+      return await response.json();
+    } catch (error) {
+      console.error(`❌ API Error (${endpoint}):`, error);
+      throw error;
     }
-  };
+  },
+  
+  /**
+   * Start trivia with improved error handling
+   * @param {string} broadcasterId - The broadcaster's Twitch ID
+   * @returns {Promise<Object>} - Response from server
+   */
+  async startTrivia(broadcasterId) {
+    if (!broadcasterId) {
+      console.error("❌ Missing broadcaster ID for starting trivia");
+      return { success: false, error: "Missing broadcaster ID" };
+    }
+    
+    // Log full request details for debugging
+    console.log(`🚀 Sending start trivia request with broadcaster ID: ${broadcasterId}`);
+    console.log(`🔑 Using auth token: ${TriviaState.data.authToken ? (TriviaState.data.authToken.substring(0, 10) + '...') : 'MISSING'}`);
+    
+    try {
+      const result = await this.request('/start-trivia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broadcasterId })
+      });
+      
+      console.log("✅ Start trivia API response:", result);
+      TriviaState.setTriviaActive(true);
+      return result;
+    } catch (error) {
+      console.error("❌ Error starting trivia via API:", error);
+      
+      // Provide more detailed error info
+      const errorInfo = {
+        success: false,
+        error: error.message || "Failed to start trivia",
+        details: {
+          broadcasterId: broadcasterId,
+          hasAuth: !!TriviaState.data.authToken,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      // Check the connection and try to recover
+      this.checkConnection()
+        .then(isConnected => {
+          if (!isConnected) {
+            console.log("🔄 Connection issue detected, trying Twitch messaging fallback");
+            TwitchService.sendMessage({
+              type: 'START_TRIVIA',
+              broadcasterId
+            });
+          }
+        });
+      
+      return errorInfo;
+    }
+  },
+  
+  /**
+   * End trivia with improved error handling
+   * @param {string} broadcasterId - The broadcaster's Twitch ID
+   * @returns {Promise<Object>} - Response from server
+   */
+  async endTrivia(broadcasterId) {
+    if (!broadcasterId) {
+      console.error("❌ Missing broadcaster ID for ending trivia");
+      return { success: false, error: "Missing broadcaster ID" };
+    }
+    
+    try {
+      const result = await this.request('/end-trivia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broadcasterId })
+      });
+      
+      console.log("✅ End trivia API response:", result);
+      TriviaState.setTriviaActive(false);
+      return result;
+    } catch (error) {
+      console.error("❌ Error ending trivia via API:", error);
+      
+      // Try fallback to Twitch messaging
+      console.log("🔄 Trying Twitch messaging fallback for ending trivia");
+      TwitchService.sendMessage({
+        type: 'END_TRIVIA',
+        broadcasterId
+      });
+      
+      // Set active state anyway for UI
+      TriviaState.setTriviaActive(false);
+      
+      // Return a fake success response for the UI
+      return { 
+        success: false, 
+        error: error.message || "Failed to end trivia via API",
+        fallback: "Used Twitch messaging instead"
+      };
+    }
+  },
+  
+  /**
+   * Check API connection health
+   * @returns {Promise<boolean>} True if connection is healthy
+   */
+  async checkConnection() {
+    try {
+      // Use a lightweight endpoint to check connection
+      const response = await fetch(`${CONFIG.API_BASE_URL()}/api/ping`, {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' },
+        // Short timeout to quickly detect issues
+        signal: AbortSignal.timeout(3000)
+      });
+      
+      return response.ok;
+    } catch (error) {
+      console.warn("⚠️ API connection check failed:", error);
+      return false;
+    }
+  },
+  
+  /**
+   * Reconnect to API and recover session
+   * Call this when connection issues are detected
+   */
+  async reconnect() {
+    console.log("🔄 Attempting API reconnection");
+    
+    try {
+      // Check if we still have auth data
+      if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
+        console.error("❌ Missing auth data for reconnection");
+        return false;
+      }
+      
+      // Try to validate the session
+      const response = await fetch(`${CONFIG.API_BASE_URL()}/api/validate-session`, {
+        headers: {
+          'Authorization': `Bearer ${TriviaState.data.authToken}`
+        }
+      });
+      
+      if (response.ok) {
+        console.log("✅ API session validated successfully");
+        return true;
+      }
+      
+      console.warn("⚠️ API session invalid, requesting reauthorization");
+      
+      // Prompt Twitch to reauthorize if needed
+      if (window.Twitch && window.Twitch.ext) {
+        // This will trigger onAuthorized again
+        window.Twitch.ext.actions.requestEBS({});
+      }
+      
+      return false;
+    } catch (error) {
+      console.error("❌ Error during API reconnection:", error);
+      return false;
+    }
+  }
+}
   
   /**
    * ====================================
@@ -919,818 +859,770 @@ const ApiService = {
  */
 
 const EventHandlers = {
-    /**
-     * Main initialization function for all event handlers
-     */
-    init() {
-      console.log("🔄 Initializing event handlers");
-      
-      // Attach handlers to all UI controls
-      this.attachAllEventListeners();
-    },
+  /**
+   * Main initialization function for all event handlers
+   */
+  init() {
+    console.log("🔄 Initializing event handlers");
     
-    /**
-     * Attach all event listeners to UI elements
-     */
-    attachAllEventListeners() {
-      // Main action buttons
-      this.attachButtonListener(CONFIG.DOM_IDS.saveSettings, this.handleSaveSettings);
-      this.attachButtonListener(CONFIG.DOM_IDS.startTrivia, this.handleStartTrivia);
-      this.attachButtonListener(CONFIG.DOM_IDS.endTrivia, this.handleEndTrivia);
-      this.attachButtonListener(CONFIG.DOM_IDS.saveFilters, this.handleSaveFilters);
-      
-      // Leaderboard controls
-      this.attachButtonListener(CONFIG.DOM_IDS.showSessionScores, this.handleShowSessionScores);
-      this.attachButtonListener(CONFIG.DOM_IDS.showTotalScores, this.handleShowTotalScores);
-      this.attachButtonListener(CONFIG.DOM_IDS.refreshLeaderboard, this.handleRefreshLeaderboard);
-      
-      console.log("✅ All event listeners attached");
-    },
+    // Attach handlers to all UI controls
+    this.attachAllEventListeners();
+  },
+  
+  /**
+   * Attach all event listeners to UI elements
+   */
+  attachAllEventListeners() {
+    // Main action buttons
+    this.attachButtonListener(CONFIG.DOM_IDS.saveSettings, this.handleSaveSettings);
+    this.attachButtonListener(CONFIG.DOM_IDS.startTrivia, this.handleStartTrivia);
+    this.attachButtonListener(CONFIG.DOM_IDS.endTrivia, this.handleEndTrivia);
+    this.attachButtonListener(CONFIG.DOM_IDS.saveFilters, this.handleSaveFilters);
     
-    /**
-     * Helper to safely attach event listeners
-     * @param {string} buttonId - The DOM ID of the button
-     * @param {function} handler - The event handler function
-     */
-    attachButtonListener(buttonId, handler) {
-      const button = document.getElementById(buttonId);
-      if (button) {
-        // Bind 'this' to ensure the handler has access to EventHandlers methods
-        button.addEventListener("click", handler.bind(this));
-        console.log(`✅ Attached event listener to #${buttonId}`);
-      } else {
-        console.error(`❌ Button #${buttonId} NOT found in DOM!`);
-      }
-    },
+    // Leaderboard controls
+    this.attachButtonListener(CONFIG.DOM_IDS.showSessionScores, this.handleShowSessionScores);
+    this.attachButtonListener(CONFIG.DOM_IDS.showTotalScores, this.handleShowTotalScores);
+    this.attachButtonListener(CONFIG.DOM_IDS.refreshLeaderboard, this.handleRefreshLeaderboard);
     
-    /**
-     * Settings form handlers
-     */
-    handleSaveSettings(event) {
-      console.log("🔘 Save Settings button clicked");
-      event.preventDefault();
+    console.log("✅ All event listeners attached");
+  },
+  
+  /**
+   * Helper to safely attach event listeners
+   * @param {string} buttonId - The DOM ID of the button
+   * @param {function} handler - The event handler function
+   */
+  attachButtonListener(buttonId, handler) {
+    const button = document.getElementById(buttonId);
+    if (button) {
+      // Bind 'this' to ensure the handler has access to EventHandlers methods
+      button.addEventListener("click", handler.bind(this));
+      console.log(`✅ Attached event listener to #${buttonId}`);
+    } else {
+      console.error(`❌ Button #${buttonId} NOT found in DOM!`);
+    }
+  },
+  
+  /**
+   * Settings form handlers
+   */
+  handleSaveSettings(event) {
+    console.log("🔘 Save Settings button clicked");
+    event.preventDefault();
+    
+    // Verify authentication
+    if (!TriviaState.hasValidAuth()) {
+      console.error("❌ Missing authentication for saving settings");
+      UI.showButtonError(CONFIG.DOM_IDS.saveSettings, "Auth Error!");
       
-      // Verify authentication
-      if (!TriviaState.hasValidAuth()) {
-        console.error("❌ Missing authentication for saving settings");
-        UI.showButtonError(CONFIG.DOM_IDS.saveSettings, "Auth Error!");
-        return;
-      }
-      
-      // Get and validate input values
-      const answerTimeInput = document.getElementById(CONFIG.DOM_IDS.answerTime);
-      const intervalTimeInput = document.getElementById(CONFIG.DOM_IDS.intervalTime);
-      
-      if (!answerTimeInput || !intervalTimeInput) {
-        console.error("❌ Settings inputs not found in DOM");
-        UI.showButtonError(CONFIG.DOM_IDS.saveSettings, "UI Error!");
-        return;
-      }
-      
-      // Convert to milliseconds and validate ranges
-      const answerTime = parseInt(answerTimeInput.value, 10) * 1000; // seconds to ms
-      const intervalTime = parseInt(intervalTimeInput.value, 10) * 60000; // minutes to ms
-      
-      // Validate input ranges
-      if (isNaN(answerTime) || isNaN(intervalTime) || 
-          answerTime < 5000 || answerTime > 60000 || 
-          intervalTime < 60000 || intervalTime > 1800000) {
+      // Try to reconnect and recover session
+      this.promptReconnect("Authentication issue. Please wait...");
+      return;
+    }
+    
+    // Get and validate input values
+    const answerTimeInput = document.getElementById(CONFIG.DOM_IDS.answerTime);
+    const intervalTimeInput = document.getElementById(CONFIG.DOM_IDS.intervalTime);
+    
+    if (!answerTimeInput || !intervalTimeInput) {
+      console.error("❌ Settings inputs not found in DOM");
+      UI.showButtonError(CONFIG.DOM_IDS.saveSettings, "UI Error!");
+      return;
+    }
+    
+    // Convert to milliseconds and validate ranges
+    const answerTime = parseInt(answerTimeInput.value, 10) * 1000; // seconds to ms
+    const intervalTime = parseInt(intervalTimeInput.value, 10) * 60000; // minutes to ms
+    
+    // Validate input ranges
+    if (isNaN(answerTime) || isNaN(intervalTime) || 
+        answerTime < 5000 || answerTime > 60000 || 
+        intervalTime < 60000 || intervalTime > 1800000) {
+        
+      console.error("❌ Invalid time values:", { answerTime, intervalTime });
+      UI.showButtonError(CONFIG.DOM_IDS.saveSettings, "Invalid Input!");
+      return;
+    }
+    
+    // Prepare settings object
+    const settings = { answerTime, intervalTime };
+    console.log("📤 Saving settings:", settings);
+    
+    // Temporarily disable button to prevent multiple clicks
+    const button = document.getElementById(CONFIG.DOM_IDS.saveSettings);
+    if (button) button.disabled = true;
+    
+    // Update settings via API
+    ApiService.saveSettings(settings)
+      .then(data => {
+        if (data.success) {
+          console.log("✅ Settings saved successfully");
+          UI.showButtonSuccess(CONFIG.DOM_IDS.saveSettings, "Settings Saved!");
           
-        console.error("❌ Invalid time values:", { answerTime, intervalTime });
-        UI.showButtonError(CONFIG.DOM_IDS.saveSettings, "Invalid Input!");
-        return;
-      }
-      
-      // Prepare settings object
-      const settings = { answerTime, intervalTime };
-      console.log("📤 Saving settings:", settings);
-      
-      // Temporarily disable button to prevent multiple clicks
-      const button = document.getElementById(CONFIG.DOM_IDS.saveSettings);
-      if (button) button.disabled = true;
-      
-      // Update settings via API
-      ApiService.saveSettings(settings)
-        .then(data => {
-          if (data.success) {
-            console.log("✅ Settings saved successfully");
-            UI.showButtonSuccess(CONFIG.DOM_IDS.saveSettings, "Settings Saved!");
-            
-            // Update state and UI
-            TriviaState.updateSettings(settings);
-          } else {
-            console.error("❌ Error saving settings:", data.error);
-            UI.showButtonError(CONFIG.DOM_IDS.saveSettings, data.error || "Save Failed!");
+          // Update state and UI
+          TriviaState.updateSettings(settings);
+        } else {
+          console.error("❌ Error saving settings:", data.error);
+          UI.showButtonError(CONFIG.DOM_IDS.saveSettings, data.error || "Save Failed!");
+          
+          // Check for auth issues
+          if (data.error && (data.error.includes("token") || data.error.includes("auth"))) {
+            this.promptReconnect("Authentication issue. Please wait...");
           }
-        })
-        .catch(error => {
-          console.error("❌ Exception saving settings:", error);
-          UI.showButtonError(CONFIG.DOM_IDS.saveSettings, "Error!");
-        })
-        .finally(() => {
-          // Re-enable button after a short delay
-          setTimeout(() => {
-            if (button) button.disabled = false;
-          }, CONFIG.REFRESH_INTERVALS.disableDelay);
+        }
+      })
+      .catch(error => {
+        console.error("❌ Exception saving settings:", error);
+        UI.showButtonError(CONFIG.DOM_IDS.saveSettings, "Error!");
+        
+        // Try fallback
+        console.log("🔄 Trying Twitch messaging as fallback for settings");
+        TwitchService.sendMessage({
+          type: 'UPDATE_SETTINGS',
+          ...settings
         });
-    },
+      })
+      .finally(() => {
+        // Re-enable button after a short delay
+        setTimeout(() => {
+          if (button) button.disabled = false;
+        }, CONFIG.REFRESH_INTERVALS.disableDelay);
+      });
+  },
+  
+  /**
+   * Filter handlers
+   */
+  handleSaveFilters(event) {
+    console.log("💾 Save Filters button clicked");
+    event.preventDefault();
     
-    /**
-     * Filter handlers
-     */
-    handleSaveFilters(event) {
-      console.log("💾 Save Filters button clicked");
-      event.preventDefault();
+    // Verify broadcaster ID
+    const broadcasterId = TriviaState.data.broadcasterId;
+    if (!broadcasterId) {
+      console.error("❌ Missing broadcaster ID for saving filters");
+      UI.showButtonError(CONFIG.DOM_IDS.saveFilters, "Auth Error!");
       
-      // Verify broadcaster ID
-      const broadcasterId = TriviaState.data.broadcasterId;
-      if (!broadcasterId) {
-        console.error("❌ Missing broadcaster ID for saving filters");
-        UI.showButtonError(CONFIG.DOM_IDS.saveFilters, "Auth Error!");
-        return;
-      }
-      
-      // Get current filter state
-      const filters = TriviaState.getFilterState();
-      console.log("📊 Saving filters:", filters);
-      
-      // Temporarily disable button to prevent multiple clicks
-      const button = document.getElementById(CONFIG.DOM_IDS.saveFilters);
-      if (button) button.disabled = true;
-      
-      // Save filters via API
-      ApiService.saveFilters(broadcasterId, filters)
-        .then(data => {
-          if (data.success || data.settings) {
-            console.log("✅ Filters saved successfully");
-            UI.showButtonSuccess(CONFIG.DOM_IDS.saveFilters, "Filters Saved!");
-            
-            // Update question stats display if count is returned
-            if (data.questionCount) {
-              TriviaState.setTotalQuestions(data.questionCount);
-              UI.renderQuestionStats();
-            } else {
-              // Otherwise refresh question stats
-              UI.updateQuestionStats();
-            }
+      // Try to reconnect
+      this.promptReconnect("Missing broadcaster ID. Attempting to reconnect...");
+      return;
+    }
+    
+    // Get current filter state
+    const filters = TriviaState.getFilterState();
+    console.log("📊 Saving filters:", filters);
+    
+    // Temporarily disable button to prevent multiple clicks
+    const button = document.getElementById(CONFIG.DOM_IDS.saveFilters);
+    if (button) button.disabled = true;
+    
+    // Save filters via API
+    ApiService.saveFilters(broadcasterId, filters)
+      .then(data => {
+        if (data.success || data.settings) {
+          console.log("✅ Filters saved successfully");
+          UI.showButtonSuccess(CONFIG.DOM_IDS.saveFilters, "Filters Saved!");
+          
+          // Update question stats display if count is returned
+          if (data.questionCount) {
+            TriviaState.setTotalQuestions(data.questionCount);
+            UI.renderQuestionStats();
           } else {
-            console.error("❌ Error saving filters:", data.error);
-            UI.showButtonError(CONFIG.DOM_IDS.saveFilters, data.error || "Save Failed!");
+            // Otherwise refresh question stats
+            UI.updateQuestionStats();
           }
-        })
-        .catch(error => {
-          console.error("❌ Exception saving filters:", error);
-          UI.showButtonError(CONFIG.DOM_IDS.saveFilters, "Error!");
-          // Still update stats on error, as we might have updated state
-          UI.updateQuestionStats();
-        })
-        .finally(() => {
-          // Re-enable button after a short delay
-          setTimeout(() => {
-            if (button) button.disabled = false;
-          }, CONFIG.REFRESH_INTERVALS.disableDelay);
+        } else {
+          console.error("❌ Error saving filters:", data.error);
+          UI.showButtonError(CONFIG.DOM_IDS.saveFilters, data.error || "Save Failed!");
+          
+          // Check for auth or connection issues
+          if (data.error && (data.error.includes("token") || data.error.includes("auth"))) {
+            this.promptReconnect("Authentication issue. Please wait...");
+          }
+        }
+      })
+      .catch(error => {
+        console.error("❌ Exception saving filters:", error);
+        UI.showButtonError(CONFIG.DOM_IDS.saveFilters, "Error!");
+        
+        // Try fallback
+        console.log("🔄 Trying Twitch messaging as fallback for filters");
+        TwitchService.sendMessage({
+          type: 'SAVE_FILTERS',
+          broadcasterId: broadcasterId,
+          activeCategories: filters.categories,
+          activeDifficulties: filters.difficulties
         });
-    },
+        
+        // Still update stats on error, as we might have updated state
+        UI.updateQuestionStats();
+      })
+      .finally(() => {
+        // Re-enable button after a short delay
+        setTimeout(() => {
+          if (button) button.disabled = false;
+        }, CONFIG.REFRESH_INTERVALS.disableDelay);
+      });
+  },
+  
+  /**
+   * Trivia control handlers
+   */
+  handleStartTrivia(event) {
+    console.log("▶️ Start Trivia button clicked");
+    event.preventDefault();
     
-    /**
-     * Trivia control handlers
-     */
-    handleStartTrivia(event) {
-      console.log("▶️ Start Trivia button clicked");
-      event.preventDefault();
+    // Get broadcaster ID with better validation
+    const broadcasterId = TriviaState.data.broadcasterId;
+    if (!broadcasterId) {
+      console.error("❌ Missing broadcaster ID for starting trivia");
+      UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Auth Error!");
       
-      // Verify broadcaster ID
-      const broadcasterId = TriviaState.data.broadcasterId;
-      if (!broadcasterId) {
-        console.error("❌ Missing broadcaster ID for starting trivia");
-        UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Auth Error!");
-        return;
-      }
+      // Try to reconnect and recover session
+      ApiService.reconnect().then(success => {
+        if (success) {
+          // Prompt user to try again after reconnection
+          setTimeout(() => {
+            UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Try Again!");
+          }, 1000);
+        }
+      });
+      return;
+    }
+    
+    // Check if already active
+    if (TriviaState.data.triviaActive) {
+      console.warn("⚠️ Trivia is already active!");
+      UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Already Active!");
+      return;
+    }
+    
+    // Verify token is available
+    if (!TriviaState.data.authToken) {
+      console.error("❌ Missing auth token for starting trivia");
+      UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Auth Error!");
       
-      // Check if already active
-      if (TriviaState.data.triviaActive) {
-        console.warn("⚠️ Trivia is already active!");
-        UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Already Active!");
-        return;
-      }
-      
-      // Pre-emptively update UI state (optimistic update)
-      TriviaState.setTriviaActive(true);
-      UI.setUIForTriviaActive(true);
-      
-      // Start trivia via API
-      ApiService.startTrivia(broadcasterId)
-        .then(data => {
-          if (data.success) {
-            console.log("✅ Trivia started successfully");
-            UI.showButtonSuccess(CONFIG.DOM_IDS.startTrivia, "Trivia Started!");
-          } else {
-            console.error("❌ Error starting trivia:", data.error);
-            UI.showButtonError(CONFIG.DOM_IDS.startTrivia, data.error || "Start Failed!");
-            
-            // Revert state on error
+      // Try to reconnect
+      this.promptReconnect("Authentication error. Please try again.");
+      return;
+    }
+    
+    // Pre-emptively update UI state (optimistic update)
+    TriviaState.setTriviaActive(true);
+    UI.setUIForTriviaActive(true);
+    
+    // Start trivia via API with better error handling
+    ApiService.startTrivia(broadcasterId)
+      .then(data => {
+        if (data.success) {
+          console.log("✅ Trivia started successfully");
+          UI.showButtonSuccess(CONFIG.DOM_IDS.startTrivia, "Trivia Started!");
+        } else {
+          console.error("❌ Error starting trivia:", data.error || "Unknown error");
+          UI.showButtonError(CONFIG.DOM_IDS.startTrivia, data.error || "Start Failed!");
+          
+          // If we have specific connection errors, try to recover
+          if (data.error && (data.error.includes("connection") || data.error.includes("token"))) {
+            this.promptReconnect("Connection issue. Please try again.");
+          }
+          
+          // Only revert state if we don't have a fallback confirmation
+          if (!data.fallback) {
             TriviaState.setTriviaActive(false);
             UI.setUIForTriviaActive(false);
           }
-        })
-        .catch(error => {
-          console.error("❌ Exception starting trivia:", error);
-          UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Error!");
-          
-          // Leave state as active - we're doing optimistic updates
-          // and we might have succeeded via Twitch messaging
+        }
+      })
+      .catch(error => {
+        console.error("❌ Exception starting trivia:", error);
+        UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Error!");
+        
+        // Try Twitch messaging as a fallback
+        console.log("🔄 Trying Twitch messaging as fallback for start trivia");
+        TwitchService.sendMessage({
+          type: 'START_TRIVIA',
+          broadcasterId
         });
-    },
+      });
+  },
+  
+  /**
+   * Handle end trivia button click with better error handling
+   */
+  handleEndTrivia(event) {
+    console.log("⛔ End Trivia button clicked");
+    event.preventDefault();
     
-    handleEndTrivia(event) {
-      console.log("⛔ End Trivia button clicked");
-      event.preventDefault();
-      
-      // Verify broadcaster ID
-      const broadcasterId = TriviaState.data.broadcasterId;
-      if (!broadcasterId) {
-        console.error("❌ Missing broadcaster ID for ending trivia");
-        UI.showButtonError(CONFIG.DOM_IDS.endTrivia, "Auth Error!");
-        return;
-      }
-      
-      // Check if currently active
-      if (!TriviaState.data.triviaActive) {
-        console.warn("⚠️ Trivia is not active!");
-        UI.showButtonError(CONFIG.DOM_IDS.endTrivia, "Not Active!");
-        return;
-      }
-      
-      // Pre-emptively update UI state (optimistic update)
-      TriviaState.setTriviaActive(false);
-      UI.setUIForTriviaActive(false);
-      
-      // End trivia via API
-      ApiService.endTrivia(broadcasterId)
-        .then(data => {
-          if (data.success) {
-            console.log("✅ Trivia ended successfully");
-            UI.showButtonSuccess(CONFIG.DOM_IDS.endTrivia, "Trivia Ended!");
-            
-            // Refresh leaderboard to show final scores
-            UI.fetchLeaderboardData();
+    // Get broadcaster ID with better validation
+    const broadcasterId = TriviaState.data.broadcasterId;
+    if (!broadcasterId) {
+      console.error("❌ Missing broadcaster ID for ending trivia");
+      UI.showButtonError(CONFIG.DOM_IDS.endTrivia, "Auth Error!");
+      return;
+    }
+    
+    // Check if currently active
+    if (!TriviaState.data.triviaActive) {
+      console.warn("⚠️ Trivia is not active!");
+      UI.showButtonError(CONFIG.DOM_IDS.endTrivia, "Not Active!");
+      return;
+    }
+    
+    // Pre-emptively update UI state (optimistic update)
+    TriviaState.setTriviaActive(false);
+    UI.setUIForTriviaActive(false);
+    
+    // End trivia via API
+    ApiService.endTrivia(broadcasterId)
+      .then(data => {
+        if (data.success) {
+          console.log("✅ Trivia ended successfully");
+          UI.showButtonSuccess(CONFIG.DOM_IDS.endTrivia, "Trivia Ended!");
+          
+          // Refresh leaderboard to show final scores
+          UI.fetchLeaderboardData();
+        } else {
+          console.error("❌ Error ending trivia:", data.error);
+          
+          // If we used the fallback, still show success
+          if (data.fallback) {
+            UI.showButtonSuccess(CONFIG.DOM_IDS.endTrivia, "Via Twitch!");
           } else {
-            console.error("❌ Error ending trivia:", data.error);
             UI.showButtonError(CONFIG.DOM_IDS.endTrivia, data.error || "End Failed!");
             
             // Revert state on error
             TriviaState.setTriviaActive(true);
             UI.setUIForTriviaActive(true);
           }
-        })
-        .catch(error => {
-          console.error("❌ Exception ending trivia:", error);
-          UI.showButtonError(CONFIG.DOM_IDS.endTrivia, "Error!");
-          
-          // Leave state as inactive - we're doing optimistic updates
-          // and we might have succeeded via Twitch messaging
+        }
+      })
+      .catch(error => {
+        console.error("❌ Exception ending trivia:", error);
+        
+        // Try the fallback via Twitch directly
+        console.log("🔄 Trying Twitch messaging as fallback for end trivia");
+        TwitchService.sendMessage({
+          type: 'END_TRIVIA',
+          broadcasterId
         });
-    },
+        
+        // Show success message for the fallback attempt
+        UI.showButtonSuccess(CONFIG.DOM_IDS.endTrivia, "Via Twitch!");
+      });
+  },
+  
+  /**
+   * Leaderboard control handlers
+   */
+  handleShowSessionScores(event) {
+    console.log("🏆 Show Session Scores clicked");
+    event.preventDefault();
     
-    /**
-     * Leaderboard control handlers
-     */
-    handleShowSessionScores(event) {
-      console.log("🏆 Show Session Scores clicked");
-      event.preventDefault();
-      
-      // Update state
-      TriviaState.setLeaderboardView('session');
-      
-      // Update UI
-      UI.renderLeaderboard();
-    },
+    // Update state
+    TriviaState.setLeaderboardView('session');
     
-    handleShowTotalScores(event) {
-      console.log("🏆 Show Total Scores clicked");
-      event.preventDefault();
-      
-      // Update state
-      TriviaState.setLeaderboardView('total');
-      
-      // Update UI
-      UI.renderLeaderboard();
-    },
+    // Update UI
+    UI.renderLeaderboard();
+  },
+  
+  handleShowTotalScores(event) {
+    console.log("🏆 Show Total Scores clicked");
+    event.preventDefault();
     
-    handleRefreshLeaderboard(event) {
-      console.log("🔄 Refresh Leaderboard clicked");
-      event.preventDefault();
-      
-      // Refresh leaderboard data
-      UI.fetchLeaderboardData();
-    },
+    // Update state
+    TriviaState.setLeaderboardView('total');
     
-    /**
-     * Category and difficulty checkbox handlers
-     * Note: These are now managed in the UI section for better coupling with rendering
-     */
+    // Update UI
+    UI.renderLeaderboard();
+  },
+  
+  handleRefreshLeaderboard(event) {
+    console.log("🔄 Refresh Leaderboard clicked");
+    event.preventDefault();
     
-    /**
-     * Form validation helpers
-     */
-    validateTimeInput(value, min, max) {
-      const parsed = parseInt(value, 10);
-      return !isNaN(parsed) && parsed >= min && parsed <= max;
-    },
+    // Refresh leaderboard data
+    UI.fetchLeaderboardData();
+  },
+  
+  /**
+   * Prompt user to reconnect due to connection/auth issues
+   * @param {string} message - Message to display
+   */
+  promptReconnect(message) {
+    console.log(`🔄 Prompting reconnect: ${message}`);
     
-    /**
-     * Helper to show status updates
-     * @param {string} message - The status message to display
-     */
-    updateStatus(message) {
-      const statusEl = document.getElementById(CONFIG.DOM_IDS.statusDisplay);
-      if (statusEl) {
-        statusEl.textContent = message;
+    // Show status message
+    this.updateStatus(message);
+    
+    // Try to reconnect
+    ApiService.reconnect().then(success => {
+      if (success) {
+        this.updateStatus("Reconnected successfully!");
+      } else {
+        this.updateStatus("Reconnection failed. Please refresh the page.");
       }
+    });
+  },
+  
+  /**
+   * Form validation helpers
+   */
+  validateTimeInput(value, min, max) {
+    const parsed = parseInt(value, 10);
+    return !isNaN(parsed) && parsed >= min && parsed <= max;
+  },
+  
+  /**
+   * Helper to show status updates
+   * @param {string} message - The status message to display
+   */
+  updateStatus(message) {
+    const statusEl = document.getElementById(CONFIG.DOM_IDS.statusDisplay);
+    if (statusEl) {
+      statusEl.textContent = message;
     }
-  };
+  }
+};
 
 /**
  * ====================================
- * SECTION 6: Twitch Integration
+ * SECTION 6: Twitch Integration - FIXED
  * ====================================
  * Handles all interactions with the Twitch Extension SDK.
  * Responsible for authentication, messaging, and PubSub.
  */
 
 const TwitchService = {
-    /**
-     * Initialize Twitch integration
-     */
-    init() {
-      console.log("🔄 Initializing Twitch integration");
+  /**
+   * Initialize Twitch integration
+   */
+  init() {
+    console.log("🔄 Initializing Twitch integration");
+    
+    if (window.Twitch && window.Twitch.ext) {
+      console.log("✅ Twitch Extension SDK available");
+      this.setupMessageListener();
+      this.setupAuthorization();
+      this.setupBroadcasterIdentity();
       
-      if (window.Twitch && window.Twitch.ext) {
-        console.log("✅ Twitch Extension SDK available");
-        this.setupMessageListener();
-        this.setupAuthorization();
-      } else {
-        console.error("❌ Twitch Extension SDK not found");
-        
-        // Only create a mock in development environments
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          console.warn("⚠️ Creating mock Twitch for development");
-          this.createMockForTesting();
-        }
+      // Load any saved auth data from sessionStorage
+      this.loadAuthData();
+    } else {
+      console.error("❌ Twitch Extension SDK not found");
+      
+      // Only create a mock in development environments
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        console.warn("⚠️ Creating mock Twitch for development");
+        this.createMockForTesting();
       }
-    },
-    
-    /**
-     * Set up broadcaster identity tracking
-     * Ensures at least the broadcaster has their username in the system
-     */
-    setupBroadcasterIdentity() {
-        if (!window.Twitch || !window.Twitch.ext) {
-        console.error("❌ Twitch Extension SDK not available");
-        return;
-        }
-        
-        // Check if we get the channel info
-        window.Twitch.ext.onAuthorized((auth) => {
-        if (auth.channelId) {
-            console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
-            
-            // Store broadcaster ID for API calls
-            TriviaState.data.broadcasterId = auth.channelId;
-            
-            // Try to get broadcaster display name from Twitch SDK
-            if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
-            const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
-            console.log(`🎙️ Channel display name: ${broadcasterName}`);
-            
-            // Store for API calls
-            TriviaState.data.broadcasterName = broadcasterName;
-            
-            // Send to server - special case for broadcaster
-            this.sendServerMessage(auth.channelId, {
-                type: 'BROADCASTER_IDENTITY',
-                channelId: auth.channelId,
-                displayName: broadcasterName
-            });
-            } else {
-            // Try to resolve via API endpoint
-            fetch(`${CONFIG.API_BASE_URL()}/api/set-broadcaster-name`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                channelId: auth.channelId,
-                jwt: auth.token
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.displayName) {
-                console.log(`🎙️ Resolved broadcaster name via API: ${data.displayName}`);
-                TriviaState.data.broadcasterName = data.displayName;
-                }
-            })
-            .catch(error => {
-                console.error("❌ Failed to resolve broadcaster name:", error);
-            });
-            }
-        }
-        });
     }
+  },
+  
+  /**
+   * Set up broadcaster identity tracking
+   * Ensures at least the broadcaster has their username in the system
+   */
+  setupBroadcasterIdentity() {
+    if (!window.Twitch || !window.Twitch.ext) {
+      console.error("❌ Twitch Extension SDK not available");
+      return;
+    }
+    
+    // Broadcaster ID is set during onAuthorized
+    console.log("🎙️ Setting up broadcaster identity tracking");
+  },
 
-    /**
-     * Set up Twitch authorization handling
-     */
-    ,setupAuthorization() {
-      window.Twitch.ext.onAuthorized((auth) => {
-        console.log("✅ Extension authorized:", auth);
+  /**
+   * Set up Twitch authorization handling with improved persistence
+   */
+  setupAuthorization() {
+    window.Twitch.ext.onAuthorized((auth) => {
+      console.log("✅ Extension authorized:", auth);
+      
+      // Store auth data in state
+      TriviaState.setAuthData(auth.channelId, auth.token);
+      
+      // Store in sessionStorage for persistence
+      this.saveAuthData(auth);
+      
+      // Initialize app data after authorization
+      this.initializeAfterAuth();
+    });
+  },
+  
+  /**
+   * Save auth data to session storage
+   * @param {Object} auth - Auth data from Twitch
+   */
+  saveAuthData(auth) {
+    try {
+      // Save essential auth data for reconnection
+      const authData = {
+        channelId: auth.channelId,
+        token: auth.token,
+        userId: auth.userId,
+        clientId: auth.clientId,
+        timestamp: Date.now()
+      };
+      
+      sessionStorage.setItem('twitchAuthData', JSON.stringify(authData));
+      console.log("💾 Auth data saved to session storage");
+    } catch (e) {
+      console.error("❌ Failed to save auth data to session storage:", e);
+    }
+  },
+  
+  /**
+   * Load auth data from session storage
+   */
+  loadAuthData() {
+    try {
+      const authDataStr = sessionStorage.getItem('twitchAuthData');
+      if (authDataStr) {
+        const authData = JSON.parse(authDataStr);
         
-        // Store auth data in state
-        TriviaState.setAuthData(auth.channelId, auth.token);
+        // Check if data is still fresh (1 hour expiry)
+        const isExpired = Date.now() - authData.timestamp > 3600000; // 1 hour
         
-        // Initialize app data after authorization
-        this.initializeAfterAuth();
-      });
-    },
-    
-    /**
-     * Set up listener for Twitch PubSub messages
-     */
-    setupMessageListener() {
-      window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
-        console.log("📩 Received Twitch broadcast:", target, contentType);
-        
-        try {
-          // Parse the message
-          const data = JSON.parse(message);
-          console.log("📢 Parsed broadcast data:", data);
-          
-          // Process the message
-          this.handleMessage(data);
-        } catch (err) {
-          console.error("❌ Error parsing Twitch message:", err);
+        if (isExpired) {
+          console.log("⚠️ Stored auth data is expired, waiting for new authorization");
+          sessionStorage.removeItem('twitchAuthData');
+          return;
         }
-      });
+        
+        console.log("📂 Found saved auth data in session storage");
+        
+        // Set auth data in state for immediate use
+        TriviaState.setAuthData(authData.channelId, authData.token);
+        
+        // Initialize even before official auth completes
+        this.initializeAfterAuth();
+      }
+    } catch (e) {
+      console.error("❌ Failed to load auth data from session storage:", e);
+    }
+  },
+  
+  /**
+   * Set up listener for Twitch PubSub messages
+   */
+  setupMessageListener() {
+    window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
+      console.log("📩 Received Twitch broadcast:", target, contentType);
       
-      console.log("✅ Twitch message listener set up");
-    },
+      try {
+        // Parse the message
+        const data = JSON.parse(message);
+        console.log("📢 Parsed broadcast data:", data);
+        
+        // Process the message
+        this.handleMessage(data);
+      } catch (err) {
+        console.error("❌ Error parsing Twitch message:", err);
+      }
+    });
     
-    /**
-     * Initialize data loading after authentication
-     */
-    initializeAfterAuth() {
-      console.log("🔄 Loading initial data after Twitch auth");
-      
-      // Load categories from API or Twitch
-      ApiService.getCategories()
-        .then(() => {
-          UI.renderCategories();
-        })
-        .catch(error => {
-          console.error("❌ Failed to load categories:", error);
+    console.log("✅ Twitch message listener set up");
+  },
+  
+  /**
+   * Initialize data loading after authentication
+   */
+  initializeAfterAuth() {
+    console.log("🔄 Loading initial data after Twitch auth");
+    
+    // Double-check we have required data
+    if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
+      console.warn("⚠️ Missing auth data for initialization, will retry after onAuthorized");
+      return;
+    }
+    
+    // Load categories from API or Twitch
+    ApiService.getCategories()
+      .then(() => {
+        UI.renderCategories();
+      })
+      .catch(error => {
+        console.error("❌ Failed to load categories:", error);
+      });
+    
+    // Load difficulties from API or Twitch
+    ApiService.getDifficulties()
+      .then(() => {
+        UI.renderDifficulties();
+      })
+      .catch(error => {
+        console.error("❌ Failed to load difficulties:", error);
+      });
+    
+    // Load broadcaster settings (filter preferences)
+    ApiService.getBroadcasterSettings(TriviaState.data.broadcasterId)
+      .then(() => {
+        // Update UI checkboxes based on loaded settings
+        UI.renderCategories();
+        UI.renderDifficulties();
+        UI.updateQuestionStats();
+      })
+      .catch(error => {
+        console.error("❌ Failed to load broadcaster settings:", error);
+      });
+    
+    // Request broadcaster settings via Twitch as fallback
+    this.sendMessage({
+      type: 'GET_BROADCASTER_SETTINGS',
+      broadcasterId: TriviaState.data.broadcasterId
+    });
+  },
+  
+  /**
+   * Handle received Twitch messages
+   * @param {Object} data - The parsed message data
+   */
+  handleMessage(data) {
+    if (!data || !data.type) {
+      console.warn("⚠️ Received invalid message format from Twitch");
+      return;
+    }
+    
+    switch (data.type) {
+      // Settings messages
+      case "COUNTDOWN_UPDATE":
+          console.log("⏱️ Received countdown update with time remaining:", data.timeRemaining);
+          break;
+
+      case "SETTINGS_UPDATE":
+      case "UPDATE_SETTINGS":
+        console.log("⚙️ Received settings update:", data);
+        
+        // Update local settings state
+        TriviaState.updateSettings({
+          answerTime: data.answerTime,
+          intervalTime: data.intervalTime
         });
+        
+        // Update UI
+        UI.updateSettingsInputs();
+        EventHandlers.updateStatus("Settings updated!");
+        break;
       
-      // Load difficulties from API or Twitch
-      ApiService.getDifficulties()
-        .then(() => {
-          UI.renderDifficulties();
-        })
-        .catch(error => {
-          console.error("❌ Failed to load difficulties:", error);
-        });
+      // Trivia state messages
+      case "TRIVIA_START":
+      case "START_TRIVIA":
+        console.log("🚀 Received trivia start notification");
+        TriviaState.setTriviaActive(true);
+        UI.setUIForTriviaActive(true);
+        EventHandlers.updateStatus("Trivia has started!");
+        break;
       
-      // Load broadcaster settings (filter preferences)
-      ApiService.getBroadcasterSettings(TriviaState.data.broadcasterId)
-        .then(() => {
-          // Update UI checkboxes based on loaded settings
+      case "TRIVIA_END":
+      case "END_TRIVIA":
+        console.log("⛔ Received trivia end notification");
+        TriviaState.setTriviaActive(false);
+        UI.setUIForTriviaActive(false);
+        EventHandlers.updateStatus("Trivia has ended!");
+        
+        // Refresh leaderboard to show final scores
+        UI.fetchLeaderboardData();
+        break;
+      
+      // Data responses
+      case "CATEGORIES_RESPONSE":
+        console.log("📚 Received categories response:", data.categories);
+        TriviaState.setCategories(data.categories);
+        UI.renderCategories();
+        break;
+      
+      case "DIFFICULTIES_RESPONSE":
+        console.log("🔄 Received difficulties response:", data.difficulties);
+        TriviaState.setDifficulties(data.difficulties);
+        UI.renderDifficulties();
+        break;
+      
+      case "QUESTION_STATS_RESPONSE":
+        console.log("📊 Received question stats response:", data);
+        TriviaState.setTotalQuestions(data.totalMatching || 0);
+        UI.renderQuestionStats();
+        break;
+      
+      case "FILTERS_SAVED":
+        console.log("💾 Received filter save confirmation:", data);
+        EventHandlers.updateStatus(data.message || "Filters saved successfully!");
+        
+        // Update question count if available
+        if (data.questionCount) {
+          TriviaState.setTotalQuestions(data.questionCount);
+          UI.renderQuestionStats();
+        }
+        break;
+      
+      case "BROADCASTER_SETTINGS_RESPONSE":
+        console.log("⚙️ Received broadcaster settings:", data.settings);
+        
+        if (data.settings) {
+          // Update state with received settings
+          TriviaState
+            .setSelectedCategories(data.settings.active_categories)
+            .setSelectedDifficulties(data.settings.active_difficulties);
+          
+          // Update UI
           UI.renderCategories();
           UI.renderDifficulties();
           UI.updateQuestionStats();
+        }
+        break;
+      
+      default:
+        console.warn("⚠️ Unknown message type received:", data.type);
+        break;
+    }
+  },
+  
+  /**
+   * Send a message via Twitch PubSub
+   * @param {Object} message - The message to send
+   * @returns {boolean} Success status
+   */
+  sendMessage(message) {
+    if (!window.Twitch || !window.Twitch.ext) {
+      console.error("❌ Twitch SDK not available for sending messages");
+      return false;
+    }
+    
+    try {
+      console.log("📤 Sending Twitch message:", message);
+      window.Twitch.ext.send('broadcast', 'application/json', message);
+      return true;
+    } catch (error) {
+      console.error("❌ Error sending Twitch message:", error);
+      return false;
+    }
+  },
+  
+  /**
+   * Send message via Twitch server endpoint (alternative)
+   * @param {string} channelId - The channel to send to
+   * @param {Object} message - The message to send
+   */
+  async sendServerMessage(channelId, message) {
+    try {
+      const response = await fetch(`${CONFIG.API_BASE_URL()}/twitch/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId: channelId || TriviaState.data.broadcasterId,
+          message: message
         })
-        .catch(error => {
-          console.error("❌ Failed to load broadcaster settings:", error);
-        });
-      
-      // Request broadcaster settings via Twitch as fallback
-      this.sendMessage({
-        type: 'GET_BROADCASTER_SETTINGS',
-        broadcasterId: TriviaState.data.broadcasterId
       });
-    },
-    
-    /**
-     * Handle received Twitch messages
-     * @param {Object} data - The parsed message data
-     */
-    handleMessage(data) {
-      if (!data || !data.type) {
-        console.warn("⚠️ Received invalid message format from Twitch");
-        return;
-      }
       
-      switch (data.type) {
-        // Settings messages
-        case "COUNTDOWN_UPDATE":
-            console.log("⏱️ Received countdown update with time remaining:", data.timeRemaining);
+      const data = await response.json();
+      console.log("📡 Server message endpoint response:", data);
+      return data;
+    } catch (error) {
+      console.error("❌ Error using server message endpoint:", error);
+      return { success: false, error: error.message };
+    }
+  },
 
-            case "SETTINGS_UPDATE":
-        case "UPDATE_SETTINGS":
-          console.log("⚙️ Received settings update:", data);
-          
-          // Update local settings state
-          TriviaState.updateSettings({
-            answerTime: data.answerTime,
-            intervalTime: data.intervalTime
-          });
-          
-          // Update UI
-          UI.updateSettingsInputs();
-          EventHandlers.updateStatus("Settings updated!");
-          break;
-        
-        // Trivia state messages
-        case "TRIVIA_START":
-        case "START_TRIVIA":
-          console.log("🚀 Received trivia start notification");
-          TriviaState.setTriviaActive(true);
-          UI.setUIForTriviaActive(true);
-          EventHandlers.updateStatus("Trivia has started!");
-          break;
-        
-        case "TRIVIA_END":
-        case "END_TRIVIA":
-          console.log("⛔ Received trivia end notification");
-          TriviaState.setTriviaActive(false);
-          UI.setUIForTriviaActive(false);
-          EventHandlers.updateStatus("Trivia has ended!");
-          
-          // Refresh leaderboard to show final scores
-          UI.fetchLeaderboardData();
-          break;
-        
-        // Data responses
-        case "CATEGORIES_RESPONSE":
-          console.log("📚 Received categories response:", data.categories);
-          TriviaState.setCategories(data.categories);
-          UI.renderCategories();
-          break;
-        
-        case "DIFFICULTIES_RESPONSE":
-          console.log("🔄 Received difficulties response:", data.difficulties);
-          TriviaState.setDifficulties(data.difficulties);
-          UI.renderDifficulties();
-          break;
-        
-        case "QUESTION_STATS_RESPONSE":
-          console.log("📊 Received question stats response:", data);
-          TriviaState.setTotalQuestions(data.totalMatching || 0);
-          UI.renderQuestionStats();
-          break;
-        
-        case "FILTERS_SAVED":
-          console.log("💾 Received filter save confirmation:", data);
-          EventHandlers.updateStatus(data.message || "Filters saved successfully!");
-          
-          // Update question count if available
-          if (data.questionCount) {
-            TriviaState.setTotalQuestions(data.questionCount);
-            UI.renderQuestionStats();
-          }
-          break;
-        
-        case "BROADCASTER_SETTINGS_RESPONSE":
-          console.log("⚙️ Received broadcaster settings:", data.settings);
-          
-          if (data.settings) {
-            // Update state with received settings
-            TriviaState
-              .setSelectedCategories(data.settings.active_categories)
-              .setSelectedDifficulties(data.settings.active_difficulties);
-            
-            // Update UI
-            UI.renderCategories();
-            UI.renderDifficulties();
-            UI.updateQuestionStats();
-          }
-          break;
-        
-        default:
-          console.warn("⚠️ Unknown message type received:", data.type);
-          break;
-      }
-    },
-    
-    /**
-     * Send a message via Twitch PubSub
-     * @param {Object} message - The message to send
-     * @returns {boolean} Success status
-     */
-    sendMessage(message) {
-      if (!window.Twitch || !window.Twitch.ext) {
-        console.error("❌ Twitch SDK not available for sending messages");
-        return false;
-      }
-      
-      try {
-        console.log("📤 Sending Twitch message:", message);
-        window.Twitch.ext.send('broadcast', 'application/json', message);
-        return true;
-      } catch (error) {
-        console.error("❌ Error sending Twitch message:", error);
-        return false;
-      }
-    },
-    
-    /**
-     * Send message via Twitch server endpoint (alternative)
-     * @param {string} channelId - The channel to send to
-     * @param {Object} message - The message to send
-     */
-    async sendServerMessage(channelId, message) {
-      try {
-        const response = await fetch(`${CONFIG.API_BASE_URL()}/twitch/message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channelId: channelId || TriviaState.data.broadcasterId,
-            message: message
-          })
-        });
-        
-        const data = await response.json();
-        console.log("📡 Server message endpoint response:", data);
-        return data;
-      } catch (error) {
-        console.error("❌ Error using server message endpoint:", error);
-        return { success: false, error: error.message };
-      }
-    },
-    
-    /**
-     * Create mock Twitch for testing in development
-     * Simulates Twitch SDK for local development
-     */
-    createMockForTesting() {
-      console.warn("⚠️ Creating mock Twitch object for testing");
-      
-      // Create mock Twitch object
-      window.Twitch = {
-        ext: {
-          onAuthorized: (callback) => {
-            console.log("🔧 Mock Twitch auth triggered");
-            
-            // Simulate auth with test broadcaster ID
-            setTimeout(() => {
-              callback({
-                userId: "mock-user-123",
-                channelId: "70361469", // Test broadcaster ID
-                token: "mock-token-for-testing"
-              });
-            }, 500);
-          },
-          
-          listen: (type, callback) => {
-            console.log("🔧 Mock Twitch listen registered for:", type);
-            window.mockTwitchCallback = callback; // Store for simulated events
-          },
-          
-          send: (target, contentType, message) => {
-            console.log("🔧 Mock Twitch send:", { target, contentType, message });
-            
-            // Simulate responses based on message type
-            this.simulateMockResponse(message);
-          }
-        }
-      };
-      
-      // Re-initialize with mock
-      this.init();
-      
-      // Add some debug controls for mock
-      this.addMockTwitchControls();
-    },
-    
-    /**
-     * Simulate response for mock Twitch
-     * @param {Object} message - The message to respond to
-     */
-    simulateMockResponse(message) {
-      if (!message || !message.type) return;
-      
-      setTimeout(() => {
-        switch (message.type) {
-          case 'GET_CATEGORIES':
-            const mockCategories = [
-              { id: "gaming", name: "Gaming", questionCount: 50 },
-              { id: "history", name: "History", questionCount: 30 },
-              { id: "science", name: "Science", questionCount: 25 },
-              { id: "music", name: "Music", questionCount: 45 },
-              { id: "movies", name: "Movies & TV", questionCount: 60 }
-            ];
-            
-            if (window.mockTwitchCallback) {
-              window.mockTwitchCallback('broadcast', 'application/json', 
-                JSON.stringify({
-                  type: 'CATEGORIES_RESPONSE',
-                  categories: mockCategories
-                })
-              );
-            }
-            
-            // Also update state directly
-            TriviaState.setCategories(mockCategories);
-            UI.renderCategories();
-            break;
-            
-          case 'GET_DIFFICULTIES':
-            const mockDifficulties = [
-              { difficulty: "Easy", count: 40 },
-              { difficulty: "Medium", count: 50 },
-              { difficulty: "Hard", count: 15 }
-            ];
-            
-            if (window.mockTwitchCallback) {
-              window.mockTwitchCallback('broadcast', 'application/json', 
-                JSON.stringify({
-                  type: 'DIFFICULTIES_RESPONSE',
-                  difficulties: mockDifficulties
-                })
-              );
-            }
-            
-            // Also update state directly
-            TriviaState.setDifficulties(mockDifficulties);
-            UI.renderDifficulties();
-            break;
-            
-          case 'GET_QUESTION_STATS':
-            if (window.mockTwitchCallback) {
-              window.mockTwitchCallback('broadcast', 'application/json', 
-                JSON.stringify({
-                  type: 'QUESTION_STATS_RESPONSE',
-                  totalMatching: 85,
-                  filters: {
-                    categories: message.categories,
-                    difficulties: message.difficulties
-                  }
-                })
-              );
-            }
-            
-            // Also update state directly
-            TriviaState.setTotalQuestions(85);
-            UI.renderQuestionStats();
-            break;
-            
-          case 'GET_BROADCASTER_SETTINGS':
-            if (window.mockTwitchCallback) {
-              window.mockTwitchCallback('broadcast', 'application/json',
-                JSON.stringify({
-                  type: 'BROADCASTER_SETTINGS_RESPONSE',
-                  settings: {
-                    broadcaster_id: message.broadcasterId || '70361469',
-                    active_categories: ['gaming', 'science'],
-                    active_difficulties: ['Easy', 'Medium', 'Hard']
-                  }
-                })
-              );
-            }
-            break;
-            
-          case 'UPDATE_SETTINGS':
-            if (window.mockTwitchCallback) {
-              window.mockTwitchCallback('broadcast', 'application/json',
-                JSON.stringify({
-                  type: 'SETTINGS_UPDATE',
-                  answerTime: message.answerTime,
-                  intervalTime: message.intervalTime
-                })
-              );
-            }
-            break;
-            
-          case 'START_TRIVIA':
-            if (window.mockTwitchCallback) {
-              window.mockTwitchCallback('broadcast', 'application/json',
-                JSON.stringify({
-                  type: 'TRIVIA_START'
-                })
-              );
-            }
-            break;
-            
-          case 'END_TRIVIA':
-            if (window.mockTwitchCallback) {
-              window.mockTwitchCallback('broadcast', 'application/json',
-                JSON.stringify({
-                  type: 'TRIVIA_END'
-                })
-              );
-            }
-            break;
-        }
-      }, 500); // Simulate network delay
-    },
-    
     /**
      * Add mock Twitch debug controls
      * Only used in development environment

@@ -236,7 +236,7 @@ const CONFIG = {
 
 /**
  * ====================================
- * SECTION 3: API Services - FIXED
+ * SECTION 3: API Services
  * ====================================
  * Handles all communication with the backend server.
  * Provides consistent error handling and fallback mechanisms.
@@ -275,6 +275,268 @@ const ApiService = {
     } catch (error) {
       console.error(`❌ API Error (${endpoint}):`, error);
       throw error;
+    }
+  },
+  
+  /**
+   * Get categories from API
+   * @returns {Promise<Object>} - Response from server
+   */
+  async getCategories() {
+    try {
+      console.log("📚 Fetching categories from API");
+      const data = await this.request('/api/categories');
+      
+      // Update state with categories
+      if (data && data.categories) {
+        TriviaState.setCategories(data.categories);
+        console.log(`✅ Loaded ${data.categories.length} categories`);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("❌ Error fetching categories:", error);
+      
+      // Try fallback via Twitch messaging
+      console.log("🔄 Trying Twitch messaging as fallback for categories");
+      TwitchService.sendMessage({
+        type: 'GET_CATEGORIES'
+      });
+      
+      throw error;
+    }
+  },
+  
+  /**
+   * Get difficulties from API
+   * @returns {Promise<Object>} - Response from server
+   */
+  async getDifficulties() {
+    try {
+      console.log("🔄 Fetching difficulties from API");
+      const data = await this.request('/api/difficulties');
+      
+      // Update state with difficulties
+      if (data && data.difficulties) {
+        TriviaState.setDifficulties(data.difficulties);
+        console.log(`✅ Loaded ${data.difficulties.length} difficulties`);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("❌ Error fetching difficulties:", error);
+      
+      // Try fallback via Twitch messaging
+      console.log("🔄 Trying Twitch messaging as fallback for difficulties");
+      TwitchService.sendMessage({
+        type: 'GET_DIFFICULTIES'
+      });
+      
+      throw error;
+    }
+  },
+  
+  /**
+   * Get question stats based on filters
+   * @param {Array} categories - Array of category IDs
+   * @param {Array} difficulties - Array of difficulty levels
+   * @returns {Promise<Object>} - Response from server
+   */
+  async getQuestionStats(categories = [], difficulties = []) {
+    try {
+      console.log("📊 Fetching question stats with filters:", { categories, difficulties });
+      
+      // Build query string
+      const params = new URLSearchParams();
+      
+      if (categories && categories.length > 0) {
+        params.append('categories', categories.join(','));
+      }
+      
+      if (difficulties && difficulties.length > 0) {
+        params.append('difficulties', difficulties.join(','));
+      }
+      
+      const endpoint = `/api/sample-questions?${params.toString()}`;
+      const data = await this.request(endpoint);
+      
+      // Update state with question count
+      if (data && data.totalMatching !== undefined) {
+        TriviaState.setTotalQuestions(data.totalMatching);
+        console.log(`✅ Found ${data.totalMatching} questions matching filters`);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("❌ Error fetching question stats:", error);
+      
+      // Try fallback via Twitch messaging
+      console.log("🔄 Trying Twitch messaging as fallback for question stats");
+      TwitchService.sendMessage({
+        type: 'GET_QUESTION_STATS',
+        categories: categories,
+        difficulties: difficulties
+      });
+      
+      throw error;
+    }
+  },
+  
+  /**
+   * Get leaderboard data from API
+   * @returns {Promise<Object>} - Response from server
+   */
+  async getLeaderboard() {
+    try {
+      console.log("🏆 Fetching leaderboard data");
+      const data = await this.request('/api/leaderboard');
+      
+      // Update state with leaderboard data
+      if (data) {
+        TriviaState.setLeaderboardData(data);
+        console.log("✅ Leaderboard data loaded");
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("❌ Error fetching leaderboard:", error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get broadcaster settings
+   * @param {string} broadcasterId - Broadcaster's Twitch ID
+   * @returns {Promise<Object>} - Response from server
+   */
+  async getBroadcasterSettings(broadcasterId) {
+    if (!broadcasterId) {
+      console.error("❌ Missing broadcaster ID for fetching settings");
+      return { error: "Missing broadcaster ID" };
+    }
+    
+    try {
+      console.log(`⚙️ Fetching settings for broadcaster: ${broadcasterId}`);
+      const data = await this.request(`/api/settings/${broadcasterId}`);
+      
+      // Update state with settings
+      if (data && data.settings) {
+        TriviaState
+          .setSelectedCategories(data.settings.active_categories || [])
+          .setSelectedDifficulties(data.settings.active_difficulties || ["Easy", "Medium", "Hard"]);
+        
+        console.log("✅ Broadcaster settings loaded");
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("❌ Error fetching broadcaster settings:", error);
+      
+      // Try fallback via Twitch messaging
+      console.log("🔄 Trying Twitch messaging as fallback for broadcaster settings");
+      TwitchService.sendMessage({
+        type: 'GET_BROADCASTER_SETTINGS',
+        broadcasterId: broadcasterId
+      });
+      
+      throw error;
+    }
+  },
+  
+  /**
+   * Save trivia settings
+   * @param {Object} settings - Settings object with answerTime and intervalTime
+   * @returns {Promise<Object>} - Response from server
+   */
+  async saveSettings(settings) {
+    if (!settings || !settings.answerTime || !settings.intervalTime) {
+      console.error("❌ Invalid settings object:", settings);
+      return { success: false, error: "Invalid settings" };
+    }
+    
+    try {
+      console.log("⚙️ Saving trivia settings:", settings);
+      
+      const data = await this.request('/update-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answerTime: settings.answerTime,
+          intervalTime: settings.intervalTime
+        })
+      });
+      
+      // If successful, update local state
+      if (data.success) {
+        TriviaState.updateSettings(settings);
+        console.log("✅ Settings saved successfully");
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("❌ Error saving settings:", error);
+      
+      // Try fallback via Twitch messaging
+      console.log("🔄 Trying Twitch messaging as fallback for settings");
+      TwitchService.sendMessage({
+        type: 'UPDATE_SETTINGS',
+        answerTime: settings.answerTime,
+        intervalTime: settings.intervalTime
+      });
+      
+      // Return error response
+      return { 
+        success: false, 
+        error: error.message || "Failed to save settings",
+        fallback: "Used Twitch messaging"
+      };
+    }
+  },
+  
+  /**
+   * Save filter preferences for broadcaster
+   * @param {string} broadcasterId - Broadcaster's Twitch ID
+   * @param {Object} filters - Filter object with categories and difficulties
+   * @returns {Promise<Object>} - Response from server
+   */
+  async saveFilters(broadcasterId, filters) {
+    if (!broadcasterId) {
+      console.error("❌ Missing broadcaster ID for saving filters");
+      return { success: false, error: "Missing broadcaster ID" };
+    }
+    
+    try {
+      console.log(`📁 Saving filters for broadcaster ${broadcasterId}:`, filters);
+      
+      const data = await this.request(`/api/settings/${broadcasterId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeCategories: filters.categories,
+          activeDifficulties: filters.difficulties
+        })
+      });
+      
+      console.log("✅ Filters saved successfully");
+      return { ...data, success: true };
+    } catch (error) {
+      console.error("❌ Error saving filters:", error);
+      
+      // Try fallback via Twitch messaging
+      console.log("🔄 Trying Twitch messaging as fallback for filters");
+      TwitchService.sendMessage({
+        type: 'SAVE_FILTERS',
+        broadcasterId: broadcasterId,
+        activeCategories: filters.categories,
+        activeDifficulties: filters.difficulties
+      });
+      
+      // Return error response with fallback info
+      return { 
+        success: false, 
+        error: error.message || "Failed to save filters",
+        fallback: "Used Twitch messaging"
+      };
     }
   },
   
@@ -437,7 +699,7 @@ const ApiService = {
       return false;
     }
   }
-}
+};
   
   /**
    * ====================================
@@ -1320,62 +1582,148 @@ const TwitchService = {
     }
   },
   
-  /**
-   * Set up broadcaster identity tracking
-   * Ensures at least the broadcaster has their username in the system
-   */
-  setupBroadcasterIdentity() {
-      if (!window.Twitch || !window.Twitch.ext) {
-      console.error("❌ Twitch Extension SDK not available");
-      return;
-      }
+/**
+ * Set up broadcaster identity tracking with better error handling
+ * Ensures at least the broadcaster has their username in the system
+ */
+setupBroadcasterIdentity() {
+  if (!window.Twitch || !window.Twitch.ext) {
+    console.error("❌ Twitch Extension SDK not available");
+    return;
+  }
+  
+  // Check if we get the channel info
+  window.Twitch.ext.onAuthorized((auth) => {
+    if (auth.channelId) {
+      console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
       
-      // Check if we get the channel info
-      window.Twitch.ext.onAuthorized((auth) => {
-      if (auth.channelId) {
-          console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
-          
-          // Store broadcaster ID for API calls
-          TriviaState.data.broadcasterId = auth.channelId;
-          
-          // Try to get broadcaster display name from Twitch SDK
-          if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
-          const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
-          console.log(`🎙️ Channel display name: ${broadcasterName}`);
-          
-          // Store for API calls
-          TriviaState.data.broadcasterName = broadcasterName;
-          
-          // Send to server - special case for broadcaster
-          this.sendServerMessage(auth.channelId, {
-              type: 'BROADCASTER_IDENTITY',
-              channelId: auth.channelId,
-              displayName: broadcasterName
-          });
-          } else {
-          // Try to resolve via API endpoint
-          fetch(`${CONFIG.API_BASE_URL()}/api/set-broadcaster-name`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-              channelId: auth.channelId,
-              jwt: auth.token
-              })
-          })
-          .then(response => response.json())
-          .then(data => {
-              if (data.success && data.displayName) {
-              console.log(`🎙️ Resolved broadcaster name via API: ${data.displayName}`);
-              TriviaState.data.broadcasterName = data.displayName;
-              }
-          })
-          .catch(error => {
-              console.error("❌ Failed to resolve broadcaster name:", error);
-          });
-          }
+      // Store broadcaster ID for API calls
+      TriviaState.data.broadcasterId = auth.channelId;
+      
+      // Try to get broadcaster display name from Twitch SDK
+      if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
+        const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
+        console.log(`🎙️ Channel display name: ${broadcasterName}`);
+        
+        // Store for API calls
+        TriviaState.data.broadcasterName = broadcasterName;
+        
+        // Send to server - special case for broadcaster
+        this.sendServerBroadcasterInfo(auth.channelId, broadcasterName, auth.token);
+      } else {
+        // Try to resolve via API endpoint with better error handling
+        this.resolveBroadcasterViaAPI(auth.channelId, auth.token);
       }
-      });
-  },
+    }
+  });
+},
+
+/**
+ * Resolve broadcaster info via API with better error handling
+ */
+resolveBroadcasterViaAPI(channelId, token) {
+  if (!channelId) {
+    console.error("❌ Missing channelId for broadcaster resolution");
+    return;
+  }
+  
+  console.log(`🔍 Resolving broadcaster info via API for channel ${channelId}`);
+  console.log(`🔑 Token available: ${token ? 'YES' : 'NO'}`);
+  
+  // Make the API request with better formatting and error handling
+  fetch(`${CONFIG.API_BASE_URL()}/api/set-broadcaster-name`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : undefined
+    },
+    body: JSON.stringify({
+      channelId: channelId,
+      jwt: token,
+      timestamp: Date.now()  // Add timestamp for debugging
+    })
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success && data.displayName) {
+      console.log(`🎙️ Resolved broadcaster name via API: ${data.displayName}`);
+      TriviaState.data.broadcasterName = data.displayName;
+    } else {
+      console.warn(`⚠️ Server response did not contain broadcaster name: ${JSON.stringify(data)}`);
+    }
+  })
+  .catch(error => {
+    console.error("❌ Failed to resolve broadcaster name:", error);
+    
+    // Try fallback method - send directly to server
+    if (token) {
+      console.log("🔄 Trying direct Twitch API lookup fallback");
+      this.sendServerBroadcasterInfo(channelId, null, token);
+    }
+  });
+},
+
+/**
+ * Send broadcaster info directly to server with JWT
+ * This allows the server to use the token to look up the info
+ */
+sendServerBroadcasterInfo(channelId, displayName, token) {
+  // Build the message data
+  const messageData = {
+    type: 'BROADCASTER_IDENTITY',
+    channelId: channelId,
+  };
+  
+  // Add display name if available
+  if (displayName) {
+    messageData.displayName = displayName;
+  }
+  
+  // Send to server with JWT in headers
+  fetch(`${CONFIG.API_BASE_URL()}/twitch/broadcaster-identity`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : undefined
+    },
+    body: JSON.stringify(messageData)
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log("✅ Broadcaster identity sent to server:", data);
+  })
+  .catch(error => {
+    console.error("❌ Error sending broadcaster identity to server:", error);
+  });
+},
+
+/**
+ * Set up Twitch authorization handling with better token management
+ */
+setupAuthorization() {
+  window.Twitch.ext.onAuthorized((auth) => {
+    // Log full auth object but mask most of token for security
+    const maskedToken = auth.token ? 
+      `${auth.token.substring(0, 10)}...${auth.token.substring(auth.token.length - 5)}` : 
+      'MISSING';
+      
+    console.log(`✅ Extension authorized: channelId=${auth.channelId}, clientId=${auth.clientId}, userId=${auth.userId}, token=${maskedToken}`);
+    
+    // Store auth data in state
+    TriviaState.setAuthData(auth.channelId, auth.token);
+    
+    // Save auth data for persistence between panel reloads
+    this.saveAuthToSession(auth);
+    
+    // Initialize app data after authorization
+    this.initializeAfterAuth();
+  });
+},
 
   /**
    * Save current auth data to session storage

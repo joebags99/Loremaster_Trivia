@@ -1618,9 +1618,10 @@ const MIN_QUESTION_INTERVAL = 5000; // Minimum 5 seconds between questions
 /**
  * Send trivia question to channel with improved concurrency control
  * @param {string} channelId - Channel ID to send question to
- * @returns {Promise<boolean>} Success status
+ * @param {boolean} skipBroadcast - Whether to skip broadcasting (for direct endpoint returns)
+ * @returns {Promise<Object|boolean>} Question object or success status
  */
-async function sendTriviaQuestion(channelId) {
+async function sendTriviaQuestion(channelId, skipBroadcast = false) {
   // First check if trivia is active
   if (!triviaActive) {
     console.log("⏳ Trivia is inactive. Waiting for Start command.");
@@ -1637,7 +1638,7 @@ async function sendTriviaQuestion(channelId) {
   // Double-check that no question is in progress
   if (questionInProgress) {
     console.warn("⚠️ A question is already in progress! Skipping duplicate question.");
-    return false;
+    return global.cachedQuestion || false; // Return cached question if available
   }
 
   // Acquire the lock using both timestamp and flag
@@ -1695,18 +1696,25 @@ async function sendTriviaQuestion(channelId) {
       timestamp: now // Add timestamp to help clients identify duplicates
     };
     
-    console.log(`📡 Broadcasting trivia question (timestamp: ${now})...`);
-
-    // Broadcast the question
-    const broadcastSuccess = await broadcastToTwitch(channelId, questionMessage);
+    // Create a copy of the message without the 'type' property for direct responses
+    const responseObj = { ...questionMessage };
+    delete responseObj.type;
     
-    if (!broadcastSuccess) {
-      console.error("❌ Failed to broadcast question");
-      questionInProgress = false;
-      return false;
+    // Cache the question for other requests
+    global.cachedQuestion = responseObj;
+    global.cachedQuestionTimestamp = now;
+    
+    // MODIFIED: Only broadcast if not explicitly skipped
+    if (!skipBroadcast) {
+      console.log(`📡 Broadcasting trivia question (timestamp: ${now})...`);
+      const broadcastSuccess = await broadcastToTwitch(channelId, questionMessage);
+      
+      if (!broadcastSuccess) {
+        console.error("❌ Failed to broadcast question");
+      } else {
+        console.log(`✅ Trivia question broadcasted to channel ${channelId}`);
+      }
     }
-
-    console.log(`✅ Trivia question sent to channel ${channelId}`);
 
     // Set round end time and schedule the next question
     triviaRoundEndTime = now + answerTime + 5000; // Extra 5s buffer
@@ -1723,7 +1731,8 @@ async function sendTriviaQuestion(channelId) {
     // Store the timeout ID in case we need to cancel it (e.g., on trivia end)
     global.currentQuestionTimeout = questionTimeout;
     
-    return true;
+    // Return the question object for direct responses
+    return responseObj;
   } catch (error) {
     console.error("❌ Error sending trivia question:", error.response?.data || error.message);
     // Always reset flags on error
@@ -2352,107 +2361,20 @@ app.get("/get-next-question", async (req, res) => {
       });
     }
 
-    // 4. Generate new question
+    // 4. Generate question but skip broadcasting since we'll return directly to client
     console.log(`🔍 [${requestId}] Getting new question from database...`);
     
-    // Set locks to prevent concurrent question generation
-    lastQuestionTimestamp = now;
-    questionInProgress = true;
-
-    try {
-      // Get broadcaster filters
-      const filters = await getBroadcasterFilters(EXT_OWNER_ID);
-      
-      // Get random question from database with cascading fallbacks
-      let questionObj = await getRandomQuestionFromDB(filters.categories, filters.difficulties);
-      
-      if (!questionObj) {
-        console.warn(`⚠️ [${requestId}] No questions match broadcaster filters, trying any question...`);
-        questionObj = await getRandomQuestionFromDB();
-        
-        if (!questionObj && triviaQuestions.length > 0) {
-          console.warn(`⚠️ [${requestId}] Falling back to in-memory questions`);
-          questionObj = triviaQuestions[Math.floor(Math.random() * triviaQuestions.length)];
-        }
-        
-        if (!questionObj) {
-          console.error(`❌ [${requestId}] No trivia questions available!`);
-          questionInProgress = false; // Release the lock
-          return res.status(400).json({ error: "No trivia questions available." });
-        }
-      }
-      
-      // 5. Prepare question data
-      const shuffledChoices = shuffleArray([...questionObj.choices]);
-      const answerTime = triviaSettings?.answerTime || 30000;
-      
-      // Set round end time
-      triviaRoundEndTime = now + answerTime + 5000; // Extra 5s buffer
-      
-      // Clear any existing timeout and schedule new one
-      if (global.currentQuestionTimeout) {
-        clearTimeout(global.currentQuestionTimeout);
-      }
-      
-      // Schedule cleanup and next question preparation
-      global.currentQuestionTimeout = setTimeout(() => {
-        console.log(`⏳ [${requestId}] Question round completed, resetting for next question`);
-        questionInProgress = false;
-        global.cachedQuestion = null;
-        global.cachedQuestionTimestamp = 0;
-        
-        nextQuestionTime = Date.now() + (triviaSettings?.intervalTime || 600000);
-      }, answerTime + 5000);
-      
-      // 6. Create response object
-      const responseObj = {
-        question: questionObj.question,
-        choices: shuffledChoices,
-        correctAnswer: questionObj.correctAnswer,
-        duration: answerTime,
-        categoryId: questionObj.categoryId,
-        difficulty: questionObj.difficulty,
-        questionId: questionObj.id,
-        timestamp: now
-      };
-      
-      // 7. Cache and broadcast
-      // Store in global cache for other clients
-      global.cachedQuestion = responseObj;
-      global.cachedQuestionTimestamp = now;
-      
-      console.log(`📩 [${requestId}] Sending trivia question: ID ${questionObj.id}`);
-      
-      // Broadcast to all clients via PubSub (non-blocking)
-      try {
-        const questionMessage = {
-          type: "TRIVIA_QUESTION",
-          ...responseObj
-        };
-        
-        broadcastToTwitch(EXT_OWNER_ID, questionMessage)
-          .then(success => {
-            if (success) {
-              console.log(`📢 [${requestId}] Successfully broadcast question to all clients`);
-            } else {
-              console.warn(`⚠️ [${requestId}] Failed to broadcast question, clients will rely on direct requests`);
-            }
-          })
-          .catch(err => console.error(`❌ [${requestId}] Error in broadcast:`, err));
-      } catch (broadcastError) {
-        console.error(`❌ [${requestId}] Error preparing broadcast:`, broadcastError);
-        // Continue anyway - clients can still get the question via direct request
-      }
-      
-      // 8. Send response
-      return res.json(responseObj);
-    } catch (error) {
-      console.error(`❌ [${requestId}] Error getting next question:`, error);
-      // Release the lock on error
-      questionInProgress = false;
-      global.cachedQuestion = null;
-      return res.status(500).json({ error: "Server error getting next question" });
+    // MODIFIED: Pass true to skip broadcasting, as we'll return the question directly
+    const questionResponse = await sendTriviaQuestion(EXT_OWNER_ID, true);
+    
+    if (!questionResponse) {
+      console.error(`❌ [${requestId}] Failed to generate question`);
+      return res.status(500).json({ error: "Failed to generate question" });
     }
+    
+    console.log(`📩 [${requestId}] Sending trivia question directly to client: ID ${questionResponse.questionId}`);
+    return res.json(questionResponse);
+    
   } catch (error) {
     console.error("❌ Error in get-next-question endpoint:", error);
     // Always release the lock on error

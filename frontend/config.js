@@ -1622,13 +1622,7 @@ const TwitchService = {
         }
       }
       
-      // CORRECTED: Use proper authentication request method
-      if (window.Twitch.ext.actions && typeof window.Twitch.ext.actions.requestIdShare === 'function') {
-        console.log("🔑 Requesting Twitch identity sharing");
-        window.Twitch.ext.actions.requestIdShare();
-      }
-      
-      // Try to load saved auth data first (before setting up listeners)
+      // Load saved auth first (before setting up listeners)
       this.loadSavedAuth();
       
       // Set up listeners
@@ -1661,30 +1655,44 @@ const TwitchService = {
       return;
     }
     
-    // Check if we get the channel info
-    window.Twitch.ext.onAuthorized((auth) => {
-      if (auth.channelId) {
-        console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
-        
-        // Store broadcaster ID for API calls
-        TriviaState.data.broadcasterId = auth.channelId;
-        
-        // Try to get broadcaster display name from Twitch SDK
-        if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
-          const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
-          console.log(`🎙️ Channel display name: ${broadcasterName}`);
-          
-          // Store for API calls
-          TriviaState.data.broadcasterName = broadcasterName;
-          
-          // Send to server - special case for broadcaster
-          this.sendServerBroadcasterInfo(auth.channelId, broadcasterName, auth.token);
-        } else {
-          // Try to resolve via API endpoint with better error handling
-          this.resolveBroadcasterViaAPI(auth.channelId, auth.token);
-        }
+    // We don't want to register another onAuthorized handler here
+    // as that would create duplicate handlers. Instead, we'll use a method
+    // that can be called from the main onAuthorized handler
+    this.processBroadcasterIdentity = (auth) => {
+      if (!auth || !auth.channelId) {
+        console.warn("⚠️ Missing channel ID in auth data");
+        return;
       }
-    });
+      
+      console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
+      
+      // Store broadcaster ID for API calls (without duplicating auth storage)
+      TriviaState.data.broadcasterId = auth.channelId;
+      
+      // Try to get broadcaster display name from Twitch SDK
+      if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
+        const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
+        console.log(`🎙️ Channel display name: ${broadcasterName}`);
+        
+        // Store for API calls
+        TriviaState.data.broadcasterName = broadcasterName;
+        
+        // Send to server - special case for broadcaster
+        this.sendServerBroadcasterInfo(auth.channelId, broadcasterName, auth.token);
+      } else {
+        // Try to resolve via API endpoint with better error handling
+        this.resolveBroadcasterViaAPI(auth.channelId, auth.token);
+      }
+    };
+    
+    // Check if we already have auth data, process it immediately
+    if (TriviaState.data.authToken && TriviaState.data.broadcasterId) {
+      console.log("🔄 Using existing auth data for broadcaster identity");
+      this.processBroadcasterIdentity({
+        channelId: TriviaState.data.broadcasterId,
+        token: TriviaState.data.authToken
+      });
+    }
   },
 
   /**
@@ -1708,7 +1716,7 @@ const TwitchService = {
       },
       body: JSON.stringify({
         channelId: channelId,
-        jwt: token,
+        token: token, // Changed from jwt: token to token: token for consistency
         timestamp: Date.now()  // Add timestamp for debugging
       })
     })
@@ -1800,6 +1808,17 @@ const TwitchService = {
       
       // Save to session storage
       this.saveAuthToSession(auth);
+      
+      // Process broadcaster identity
+      if (this.processBroadcasterIdentity) {
+        this.processBroadcasterIdentity(auth);
+      }
+      
+      // NOW request identity sharing AFTER authorization
+      if (window.Twitch.ext.actions && typeof window.Twitch.ext.actions.requestIdShare === 'function') {
+        console.log("🔑 Requesting Twitch identity sharing after auth");
+        window.Twitch.ext.actions.requestIdShare();
+      }
       
       // Update UI to reflect authentication
       EventHandlers.updateStatus("✅ Authentication successful!");
@@ -1942,6 +1961,9 @@ const TwitchService = {
   initializeAfterAuth() {
     console.log("🔄 Loading initial data after Twitch auth");
     
+    // Add detailed debugging for API requests
+    console.log(`🔍 Auth state: broadcasterId=${TriviaState.data.broadcasterId}, token=${TriviaState.data.authToken ? (TriviaState.data.authToken.substring(0, 10) + '...') : 'MISSING'}`);
+    
     // Load categories from API or Twitch
     ApiService.getCategories()
       .then(() => {
@@ -1961,22 +1983,26 @@ const TwitchService = {
       });
     
     // Load broadcaster settings (filter preferences)
-    ApiService.getBroadcasterSettings(TriviaState.data.broadcasterId)
-      .then(() => {
-        // Update UI checkboxes based on loaded settings
-        UI.renderCategories();
-        UI.renderDifficulties();
-        UI.updateQuestionStats();
-      })
-      .catch(error => {
-        console.error("❌ Failed to load broadcaster settings:", error);
-      });
-    
-    // Request broadcaster settings via Twitch as fallback
-    this.sendMessage({
-      type: 'GET_BROADCASTER_SETTINGS',
-      broadcasterId: TriviaState.data.broadcasterId
-    });
+    if (TriviaState.data.broadcasterId) {
+      ApiService.getBroadcasterSettings(TriviaState.data.broadcasterId)
+        .then(() => {
+          // Update UI checkboxes based on loaded settings
+          UI.renderCategories();
+          UI.renderDifficulties();
+          UI.updateQuestionStats();
+        })
+        .catch(error => {
+          console.error("❌ Failed to load broadcaster settings:", error);
+          
+          // Try fallback via Twitch messaging
+          this.sendMessage({
+            type: 'GET_BROADCASTER_SETTINGS',
+            broadcasterId: TriviaState.data.broadcasterId
+          });
+        });
+    } else {
+      console.warn("⚠️ No broadcaster ID available for loading settings");
+    }
   },
   
   /**
@@ -2107,45 +2133,22 @@ const TwitchService = {
     console.log("🔄 Attempting API reconnection");
     
     try {
-      // Request new authorization from Twitch instead of just failing
-      if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
-        console.log("🔄 Missing auth data, requesting new identity share from Twitch");
-        if (window.Twitch && window.Twitch.ext && window.Twitch.ext.actions) {
-          // Use the correct method
-          if (typeof window.Twitch.ext.actions.requestIdShare === 'function') {
-            window.Twitch.ext.actions.requestIdShare();
-            return true; // We've started the reauthorization process
-          }
-        } else {
-          console.error("❌ Twitch SDK not available for reauthorization");
-          return false;
-        }
+      // Check if Twitch SDK is available
+      if (!window.Twitch || !window.Twitch.ext) {
+        console.error("❌ Twitch SDK not available for reconnection");
+        return false;
       }
       
-      // If we have auth data already, try to test it
-      if (TriviaState.data.authToken) {
-        // Test token with a simple API call
-        try {
-          const testResponse = await fetch(`${CONFIG.API_BASE_URL()}/api/ping`, {
-            headers: {
-              'Authorization': `Bearer ${TriviaState.data.authToken}`
-            }
-          });
-          
-          if (testResponse.ok) {
-            console.log("✅ Token still valid");
-            return true;
-          } else {
-            console.log("❌ Token invalid, requesting new identity");
-            this.requestIdentity();
-          }
-        } catch (error) {
-          console.error("❌ Token test failed:", error);
-          this.requestIdentity();
-        }
+      // Request new authorization from Twitch
+      console.log("🔑 Requesting new identity share from Twitch");
+      if (typeof window.Twitch.ext.actions.requestIdShare === 'function') {
+        window.Twitch.ext.actions.requestIdShare();
+        EventHandlers.updateStatus("Requesting new authentication...");
+        return true;
+      } else {
+        console.error("❌ Identity share function not available");
+        return false;
       }
-      
-      return false;
     } catch (error) {
       console.error("❌ Error during API reconnection:", error);
       return false;

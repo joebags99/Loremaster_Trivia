@@ -2119,11 +2119,10 @@ app.get("/api/leaderboard", async (req, res) => {
     }
   });
 
-  // Endpoint to set broadcaster name
 // Endpoint to set broadcaster name
 app.post("/api/set-broadcaster-name", async (req, res) => {
   try {
-    const { channelId, jwt } = req.body;
+    const { channelId, jwt: token } = req.body;
     
     if (!channelId) {
       return res.status(400).json({ error: "Missing channelId" });
@@ -2133,9 +2132,9 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
     
     // Verify JWT if provided
     let decodedToken = null;
-    if (jwt) {
+    if (token) {
       try {
-        decodedToken = jwt.verify(jwt, extSecretBuffer, {
+        decodedToken = jwt.verify(token, extSecretBuffer, {
           algorithms: ['HS256']
         });
         console.log(`✅ Verified JWT for broadcaster lookup with role: ${decodedToken.role}`);

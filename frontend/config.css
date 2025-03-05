@@ -1,440 +1,688 @@
-/* 🎨 Fantasy-Inspired but Readable Style */
-@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@300;700&family=Uncial+Antiqua&display=swap');
+/* 🧙‍♂️ Loremaster Trivia - Modern Fantasy Config UI 🧙‍♂️ */
 
+/* Modern Font Stack with Fantasy Vibes */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Montserrat:wght@300;400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&display=swap');
+
+:root {
+  /* Color Palette - Modern Fantasy Admin */
+  --primary: #6a3de8;           /* Magic purple */
+  --primary-light: #9b7aff;     /* Lighter magic */
+  --primary-dark: #45269e;      /* Darker magic */
+  --accent: #ffb938;            /* Gold accent */
+  --accent-glow: #ffcc00;       /* Glowing gold */
+  --danger: #ff4757;            /* Danger red */
+  --danger-dark: #d63031;       /* Darker danger */
+  --success: #2ed573;           /* Success green */
+  --success-dark: #1cad56;      /* Darker success */
+  --background: #1a1228;        /* Deep night */
+  --surface: #271c37;           /* Surface bg */
+  --surface-light: #312544;     /* Lighter surface */
+  --surface-lighter: #3a2d50;   /* Even lighter surface */
+  --text-light: #e9e0ff;        /* Light text */
+  --text-accent: #ffcc00;       /* Gold text */
+  --muted: #7c6ba9;             /* Muted text */
+  --shadow-color: rgba(0, 0, 0, 0.5);  /* Shadow */
+  
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  
+  /* Border Radius */
+  --radius-small: 8px;
+  --radius-medium: 12px;
+  --radius-large: 20px;
+  
+  /* Box Shadow */
+  --shadow-sm: 0 2px 4px var(--shadow-color);
+  --shadow-md: 0 4px 12px var(--shadow-color);
+  --shadow-lg: 0 8px 24px var(--shadow-color);
+  
+  /* Animation Speeds */
+  --transition-fast: 0.15s;
+  --transition-medium: 0.3s;
+  --transition-slow: 0.5s;
+  --transition-extra-slow: 0.8s;
+}
+
+/* Base Styles & Reset */
 body {
-    font-family: 'Merriweather', serif;
-    background: #2b1f1f;
-    color: #f4e4ba;
-    text-align: center;
-    margin: 0;
-    padding: 20px;
+  font-family: 'Montserrat', sans-serif;
+  background: linear-gradient(135deg, var(--background) 0%, #231630 100%);
+  color: var(--text-light);
+  margin: 0;
+  padding: 30px 20px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-attachment: fixed;
 }
 
-html, body {
-    overflow-x: hidden;  /* Prevents horizontal scrolling */
-    max-width: 100%;
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 12px;
+  background-color: var(--surface);
 }
 
-/* 🔧 Layout Fix: Center and Ensure Even Spacing */
-.container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    max-width: 600px; /* Prevents elements from expanding too much */
-    margin: 0 auto;
-    padding: 10px;
+::-webkit-scrollbar-track {
+  border-radius: 10px;
+  background-color: var(--surface);
+  border: 1px solid var(--surface-light);
 }
 
-/* 📜 Fieldset Styling */
-fieldset {
-    border: 2px solid #c4a484;
-    border-radius: 12px;
-    padding: 15px;
-    margin: 15px auto;
-    background: rgba(40, 30, 20, 0.9);
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
-    width: 100%; /* Ensures full width within container */
-    max-width: 600px; /* Prevents it from being too wide */
+::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+  background: linear-gradient(var(--primary-light), var(--primary));
+  border: 2px solid var(--surface);
 }
 
-/* 🏷️ Legend Styling */
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(var(--primary), var(--primary-dark));
+}
+
+/* Typography */
+h1 {
+  font-family: 'Cinzel', 'Uncial Antiqua', serif;
+  color: var(--text-accent);
+  text-shadow: 0 0 15px rgba(255, 204, 0, 0.3);
+  text-align: center;
+  font-size: clamp(24px, 5vw, 36px);
+  margin-bottom: var(--space-xl);
+  letter-spacing: 0.05em;
+  position: relative;
+  padding-bottom: var(--space-md);
+}
+
+h1::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+
 legend {
-    font-family: 'Uncial Antiqua', cursive;
-    font-size: 1.4rem;
-    color: #ffcc00;
-    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.8);
-    padding: 0 10px;
-    text-align: center;
+  font-family: 'Cinzel', 'Uncial Antiqua', serif;
+  font-size: 1.4rem;
+  color: var(--accent);
+  text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.8);
+  padding: 0 15px;
+  margin-bottom: var(--space-sm);
+  position: relative;
 }
 
-/* 🏆 Labels & Inputs */
+legend::before, legend::after {
+  content: '•';
+  color: var(--primary-light);
+  display: inline-block;
+  margin: 0 8px;
+  vertical-align: middle;
+  font-size: 0.8em;
+}
+
+/* ⚡ Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 5px var(--primary-light); }
+  50% { box-shadow: 0 0 15px var(--primary-light); }
+  100% { box-shadow: 0 0 5px var(--primary-light); }
+}
+
+@keyframes borderShimmer {
+  0% { border-image-source: linear-gradient(45deg, var(--primary-light), var(--accent), var(--primary-light)); }
+  50% { border-image-source: linear-gradient(45deg, var(--accent), var(--primary-light), var(--accent)); }
+  100% { border-image-source: linear-gradient(45deg, var(--primary-light), var(--accent), var(--primary-light)); }
+}
+
+/* 📜 Fieldset - Modern Magical Panels */
+fieldset {
+  border: none;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-light) 100%);
+  border-radius: var(--radius-medium);
+  padding: var(--space-xl);
+  margin: 0 auto var(--space-xl);
+  box-shadow: var(--shadow-lg);
+  max-width: 800px;
+  position: relative;
+  overflow: hidden;
+  animation: fadeIn var(--transition-medium) ease-out;
+  border: 1px solid var(--primary-light);
+}
+
+fieldset::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-dark), var(--primary-light), var(--primary-dark));
+  opacity: 0.7;
+}
+
+fieldset::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(circle at 15% 15%, rgba(155, 122, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 85% 85%, rgba(155, 122, 255, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Form elements */
 label {
-    display: block;
-    font-size: 1rem;
-    font-weight: bold;
-    margin-top: 10px;
-    color: #ffeb9b;
-    text-shadow: 1px 1px 3px black;
+  display: block;
+  font-weight: 600;
+  margin: var(--space-md) 0 var(--space-xs);
+  color: var(--text-light);
+  letter-spacing: 0.5px;
+  position: relative;
+  z-index: 1;
 }
 
-input {
-    width: 95%;
-    padding: 8px;
-    margin-top: 5px;
-    border: 2px solid #c4a484;
-    border-radius: 5px;
-    font-size: 1rem;
-    text-align: center;
-    background: #3b2b1a;
-    color: #ffeb9b;
-    display: block;
-    margin: 0 auto;
+input[type="number"] {
+  width: 100%;
+  padding: 12px 15px;
+  border-radius: var(--radius-small);
+  border: 2px solid var(--primary-light);
+  background: var(--surface-dark);
+  color: var(--text-light);
+  font-size: 1rem;
+  text-align: center;
+  transition: all var(--transition-medium);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 1;
 }
 
-/* 📂 File Input */
-input[type="file"] {
-    border: none;
-    background: transparent;
-    color: #ffcc00;
-    max-width: 100%;
+input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 185, 56, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* NEW: Checkbox Styles */
+/* Modern Checkbox Categories & Difficulties */
 .checkbox-container {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 10px;
-    margin: 15px 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-md);
+  margin: var(--space-lg) 0;
+  position: relative;
+  z-index: 1;
 }
 
 .checkbox-item {
-    background: rgba(60, 40, 20, 0.8);
-    border: 1px solid #c4a484;
-    border-radius: 8px;
-    padding: 8px 15px;
-    margin: 5px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, var(--surface-light) 0%, var(--surface) 100%);
+  border-radius: var(--radius-small);
+  padding: 12px 15px;
+  cursor: pointer;
+  transition: all var(--transition-medium);
+  display: flex;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(155, 122, 255, 0.3);
+  position: relative;
+  overflow: hidden;
 }
 
 .checkbox-item:hover {
-    background: rgba(80, 60, 40, 0.8);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md), 0 0 10px rgba(106, 61, 232, 0.3);
+  border-color: var(--primary-light);
+}
+
+.checkbox-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
+  pointer-events: none;
 }
 
 .checkbox-item input[type="checkbox"] {
-    width: auto;
-    margin-right: 8px;
-    cursor: pointer;
-    accent-color: #ffcc00;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid var(--primary-light);
+  background: var(--surface);
+  margin-right: 8px;
+  position: relative;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.checkbox-item input[type="checkbox"]:checked {
+  background: var(--primary);
+  border-color: var(--primary-light);
+}
+
+.checkbox-item input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  width: 4px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-item input[type="checkbox"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(155, 122, 255, 0.3);
 }
 
 .checkbox-item label {
-    display: inline;
-    margin: 0;
-    cursor: pointer;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
 }
 
 .checkbox-count {
-    font-size: 0.8rem;
-    color: #ffcc00;
-    margin-left: 5px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 10px;
-    padding: 2px 6px;
+  background: var(--surface);
+  color: var(--accent);
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  margin-left: 8px;
+  font-weight: bold;
+  min-width: 24px;
+  text-align: center;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* NEW: Question Stats */
+/* Question Stats Panel */
 #question-stats {
-    background: rgba(40, 30, 20, 0.8);
-    border-radius: 8px;
-    padding: 12px;
-    margin: 10px 0;
-    font-weight: bold;
-    color: #ffcc00;
-    text-shadow: 1px 1px 3px black;
+  background: linear-gradient(135deg, var(--surface-lighter) 0%, var(--surface-light) 100%);
+  border-radius: var(--radius-small);
+  padding: var(--space-lg);
+  margin: var(--space-lg) 0;
+  font-weight: bold;
+  color: var(--text-light);
+  text-align: center;
+  border: 1px solid var(--primary-light);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.3);
+  position: relative;
+  z-index: 1;
 }
 
-/* Loading indicator */
+#question-stats div:last-child {
+  margin-top: var(--space-md);
+  font-size: 1.2rem;
+  color: var(--accent);
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+
+/* Loading States */
 .loading {
-    color: #c4a484;
-    font-style: italic;
-    margin: 10px 0;
+  color: var(--muted);
+  font-style: italic;
+  margin: var(--space-md) 0;
+  text-align: center;
+  position: relative;
+  padding-left: 24px;
 }
 
-/* 🔘 Buttons */
+.loading::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--primary-light);
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* 🔘 Buttons - Magical Interactive Elements */
 button {
-    background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
-    border: 2px solid #c4a484;
-    color: white;
-    font-size: 1rem;
-    font-family: 'Merriweather', serif;
-    padding: 10px 15px;
-    margin-top: 10px;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: all 0.3s ease-in-out;
-    box-shadow: 0px 0px 8px rgba(255, 204, 0, 0.7);
-    width: 95%;
-    display: block;
-    margin: 10px auto;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  border: none;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 14px 20px;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  transition: all var(--transition-medium);
+  box-shadow: var(--shadow-md);
+  display: block;
+  margin: var(--space-lg) auto;
+  width: 100%;
+  max-width: 400px;
+  position: relative;
+  overflow: hidden;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, transparent 100%);
+  pointer-events: none;
 }
 
 button:hover {
-    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
-    box-shadow: 0px 0px 15px rgba(255, 204, 0, 1);
-    transform: scale(1.05);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg), 0 0 20px rgba(106, 61, 232, 0.4);
 }
 
-/* 🛑 End Trivia Button - More Intense */
+button:active {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.1s ease;
+}
+
+button:focus {
+  outline: none;
+  box-shadow: var(--shadow-md), 0 0 0 3px rgba(155, 122, 255, 0.5);
+}
+
+/* 🔘 Specialized Buttons */
+#save-settings, #save-filters {
+  background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+}
+
+#save-settings:hover, #save-filters:hover {
+  box-shadow: var(--shadow-lg), 0 0 20px rgba(46, 213, 115, 0.4);
+}
+
 #end-trivia {
-    background: linear-gradient(180deg, #8b0000 0%, #400000 100%);
-    border-color: #b30000;
-    box-shadow: 0px 0px 15px rgba(255, 34, 34, 0.8);
+  background: linear-gradient(135deg, var(--danger) 0%, var(--danger-dark) 100%);
 }
 
 #end-trivia:hover {
-    background: linear-gradient(180deg, #ff0000 0%, #8b0000 100%);
-    box-shadow: 0px 0px 20px rgba(255, 34, 34, 1);
+  box-shadow: var(--shadow-lg), 0 0 20px rgba(255, 71, 87, 0.4);
 }
 
-/* ✅ Status Message */
-#status {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #ffcc00;
-    text-shadow: 2px 2px 5px black;
-    margin-top: 15px;
+#start-trivia {
+  background: linear-gradient(135deg, var(--accent) 0%, #ff9e2c 100%);
+  color: var(--background);
+  font-weight: bold;
 }
 
-/* Add these styles to your style.css file */
-
-#user-score {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 15px 0;
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: 10px;
-    padding: 8px 15px;
-    box-shadow: 0 0 10px rgba(255, 204, 0, 0.4);
+#start-trivia:hover {
+  box-shadow: var(--shadow-lg), 0 0 20px rgba(255, 185, 56, 0.5);
 }
 
-.total-score {
-    font-size: 1.2em;
-    color: #ffcc00;
-    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
-    font-weight: bold;
-    margin-bottom: 5px;
-}
-
-.session-score {
-    font-size: 0.9em;
-    color: #ff9900;
-    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
-    padding-top: 2px;
-    border-top: 1px solid rgba(255, 204, 0, 0.3);
-}
-
-/* Add these styles to your config.css file */
-
-/* Leaderboard controls styling */
-.leaderboard-controls {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-bottom: 15px;
-    flex-wrap: wrap;
-}
-
-.leaderboard-controls button {
-    padding: 8px 15px;
-    min-width: 120px;
-    margin: 0; /* Override default button margin */
-    width: auto; /* Override default button width */
-    transition: all 0.2s ease;
-}
-
-/* Active board button styling */
-button.active-board {
-    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
-    box-shadow: 0px 0px 10px rgba(255, 204, 0, 0.8);
-    transform: scale(1.05);
-    border-color: #ffcc00;
-}
-
-/* Leaderboard Table Styling */
-.leaderboard-container {
-    max-height: 400px;
-    overflow-y: auto;
-    margin: 15px 0;
-    background: rgba(20, 15, 10, 0.7);
-    border-radius: 8px;
-    padding: 10px;
-    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
-}
-
-.leaderboard-table {
-    width: 100%;
-    border-collapse: collapse;
-    color: #ffeb9b;
-    text-align: left;
-}
-
-.leaderboard-table th {
-    background: rgba(60, 40, 20, 0.8);
-    padding: 10px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    border-bottom: 2px solid #c4a484;
-    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
-}
-
-.leaderboard-table td {
-    padding: 8px 10px;
-    border-bottom: 1px solid rgba(196, 164, 132, 0.3);
-}
-
-.leaderboard-table tr:nth-child(even) {
-    background: rgba(40, 30, 20, 0.5);
-}
-
-.leaderboard-table tr:hover {
-    background: rgba(80, 60, 30, 0.5);
-}
-
-/* Top 3 ranks styling */
-.leaderboard-table tr.rank-1 td {
-    color: #ffd700; /* Gold */
-    font-weight: bold;
-    background: rgba(80, 60, 10, 0.5);
-}
-
-.leaderboard-table tr.rank-2 td {
-    color: #c0c0c0; /* Silver */
-    font-weight: bold;
-    background: rgba(70, 70, 80, 0.3);
-}
-
-.leaderboard-table tr.rank-3 td {
-    color: #cd7f32; /* Bronze */
-    font-weight: bold;
-    background: rgba(80, 50, 30, 0.3);
-}
-
-.loading-text {
-    text-align: center;
-    font-style: italic;
-    color: #c4a484;
-    padding: 20px !important;
-}
-
-/* 🔘 Buttons - with better centering */
-button {
-    background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
-    border: 2px solid #c4a484;
-    color: white;
-    font-size: 1rem;
-    font-family: 'Merriweather', serif;
-    padding: 10px 15px;
-    margin-top: 10px;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: all 0.3s ease-in-out;
-    box-shadow: 0px 0px 8px rgba(255, 204, 0, 0.7);
-    width: 95%;
-    display: block;
-    margin: 10px auto;
-    position: relative;
-    overflow: hidden; /* Keep animations contained */
-    min-height: 44px;
-    text-align: center;
-}
-
-button:hover {
-    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
-    box-shadow: 0px 0px 15px rgba(255, 204, 0, 1);
-    transform: scale(1.05);
-}
-
-/* Replace the button animation CSS with this corrected version */
-
-/* Button feedback styling */
+/* Button Feedback States */
 button.btn-success {
-    background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%);
-    border-color: #1e7e34;
-    box-shadow: 0px 0px 15px rgba(34, 255, 34, 0.4);
-    animation: fadeSuccess 3s forwards;
+  background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+  animation: fadeSuccess 3s forwards;
 }
 
 button.btn-error {
-    background: linear-gradient(180deg, #8b0000 0%, #400000 100%);
-    border-color: #b30000;
-    box-shadow: 0px 0px 15px rgba(255, 34, 34, 0.4);
-    animation: fadeError 3s forwards;
+  background: linear-gradient(135deg, var(--danger) 0%, var(--danger-dark) 100%);
+  animation: fadeError 3s forwards;
 }
 
-/* Button state animations */
 @keyframes fadeSuccess {
-    0% { background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%); border-color: #1e7e34; }
-    80% { background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%); border-color: #1e7e34; }
-    100% { background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%); border-color: #c4a484; }
+  0%, 80% { 
+    background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+    box-shadow: var(--shadow-md), 0 0 20px rgba(46, 213, 115, 0.5); 
+  }
+  100% { 
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    box-shadow: var(--shadow-md);
+  }
 }
 
 @keyframes fadeError {
-    0% { background: linear-gradient(180deg, #8b0000 0%, #400000 100%); border-color: #b30000; }
-    80% { background: linear-gradient(180deg, #8b0000 0%, #400000 100%); border-color: #b30000; }
-    100% { background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%); border-color: #c4a484; }
+  0%, 80% { 
+    background: linear-gradient(135deg, var(--danger) 0%, var(--danger-dark) 100%); 
+    box-shadow: var(--shadow-md), 0 0 20px rgba(255, 71, 87, 0.5);
+  }
+  100% { 
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    box-shadow: var(--shadow-md);
+  }
 }
 
-/* Original text container */
+/* Button Text Animation */
 .btn-original-text {
-    opacity: 1;
-    transition: opacity 0.3s ease;
-    display: inline-block;
+  opacity: 1;
+  transition: opacity var(--transition-medium) ease;
+  display: inline-block;
 }
 
-/* When showing feedback, hide original text properly */
 button.btn-success .btn-original-text,
 button.btn-error .btn-original-text {
-    opacity: 0;
+  opacity: 0;
 }
 
-/* Temporary message styling */
 .btn-text-temp {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 90%;
-    text-align: center;
-    animation: fadeInOut 3s forwards;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  text-align: center;
+  animation: fadeInOut 3s forwards;
+  font-weight: bold;
 }
 
-/* Animation for temporary text */
 @keyframes fadeInOut {
-    0% { opacity: 0; transform: translate(-50%, -60%); }
-    15% { opacity: 1; transform: translate(-50%, -50%); }
-    85% { opacity: 1; transform: translate(-50%, -50%); }
-    100% { opacity: 0; transform: translate(-50%, -40%); }
+  0% { opacity: 0; transform: translate(-50%, -60%); }
+  15% { opacity: 1; transform: translate(-50%, -50%); }
+  85% { opacity: 1; transform: translate(-50%, -50%); }
+  100% { opacity: 0; transform: translate(-50%, -40%); }
+}
+
+/* 🏆 Leaderboard UI */
+.leaderboard-controls {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.leaderboard-controls button {
+  width: auto;
+  margin: 0;
+  padding: 10px 15px;
+  min-width: 120px;
+  text-transform: none;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, var(--surface-lighter) 0%, var(--surface-light) 100%);
+  color: var(--text-light);
+  border: 1px solid var(--primary-light);
+}
+
+button.active-board {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  box-shadow: var(--shadow-md), 0 0 15px rgba(106, 61, 232, 0.4);
+  transform: scale(1.05);
+  border: none;
+}
+
+.leaderboard-container {
+  background: linear-gradient(135deg, rgba(26, 18, 40, 0.8) 0%, rgba(39, 28, 55, 0.8) 100%);
+  border-radius: var(--radius-small);
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--primary-light);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text-light);
+  text-align: left;
+}
+
+.leaderboard-table th {
+  background: linear-gradient(180deg, var(--primary-dark) 0%, var(--background) 100%);
+  padding: 15px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  text-align: left;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.leaderboard-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid rgba(106, 61, 232, 0.2);
+}
+
+.leaderboard-table tr:hover {
+  background: rgba(106, 61, 232, 0.1);
+}
+
+/* Top 3 Ranks */
+.leaderboard-table tr.rank-1 td {
+  color: var(--accent);
+  font-weight: bold;
+  background: linear-gradient(90deg, rgba(255, 185, 56, 0.15) 0%, transparent 100%);
+  border-left: 3px solid var(--accent);
+}
+
+.leaderboard-table tr.rank-2 td {
+  color: #dadada;
+  font-weight: bold;
+  background: linear-gradient(90deg, rgba(218, 218, 218, 0.1) 0%, transparent 100%);
+  border-left: 3px solid #dadada;
+}
+
+.leaderboard-table tr.rank-3 td {
+  color: #cd7f32;
+  font-weight: bold;
+  background: linear-gradient(90deg, rgba(205, 127, 50, 0.1) 0%, transparent 100%);
+  border-left: 3px solid #cd7f32;
+}
+
+/* Status Display */
+#status {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, var(--surface-light) 0%, var(--surface) 100%);
+  color: var(--text-light);
+  padding: 12px 20px;
+  border-radius: 30px;
+  box-shadow: var(--shadow-lg), 0 0 15px rgba(106, 61, 232, 0.3);
+  text-align: center;
+  font-weight: bold;
+  z-index: 100;
+  transition: all var(--transition-medium);
+  border: 1px solid var(--primary-light);
+  min-width: 200px;
+  max-width: 90%;
+}
+
+/* Add empty status padding to avoid layout shifts */
+#status:empty {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ✨ Sparkle Effects */
+.magical-sparkle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: white;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  animation: sparkle 1.5s linear forwards;
+}
+
+@keyframes sparkle {
+  0% { transform: translate(0, 0) scale(0); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(1); opacity: 0; }
 }
 
 /* 🔄 Responsive Fixes */
 @media (max-width: 768px) {
-    .container {
-        max-width: 95%;
-        padding: 5px;
-    }
-    
-    fieldset {
-        width: 90%;
-    }
-    
-    h1 {
-        font-size: 2rem;
-    }
+  body {
+    padding: 20px 10px;
+  }
+  
+  fieldset {
+    padding: var(--space-lg) var(--space-md);
+  }
+  
+  .leaderboard-controls {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .leaderboard-controls button {
+    width: 100%;
+    max-width: 200px;
+  }
+  
+  .checkbox-container {
+    gap: var(--space-sm);
+  }
+  
+  .checkbox-item {
+    flex-basis: 100%;
+  }
+  
+  button {
+    padding: 12px 15px;
+  }
+  
+  #status {
+    max-width: 80%;
+    font-size: 0.9rem;
+  }
+}
 
-    button {
-        width: 100%;
-    }
+/* Light hover effect on all interactive elements */
+button, .checkbox-item, input[type="number"], input[type="checkbox"] {
+  transition: transform var(--transition-medium), box-shadow var(--transition-medium), border-color var(--transition-medium);
+}
 
-    input {
-        width: 100%;
-    }
-    
-    .checkbox-container {
-        gap: 5px;
-    }
-    
-    .checkbox-item {
-        padding: 6px 10px;
-    }
+button:hover, .checkbox-item:hover {
+  transform: translateY(-3px);
+}
+
+input[type="number"]:hover, input[type="checkbox"]:hover {
+  border-color: var(--accent);
 }

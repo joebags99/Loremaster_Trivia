@@ -933,6 +933,9 @@ const ApiService = {
         });
     },
     
+    /**
+     * Leaderboard UI methods with improved username handling
+     */
     renderLeaderboard() {
       const container = document.getElementById(CONFIG.DOM_IDS.leaderboardBody);
       
@@ -958,7 +961,8 @@ const ApiService = {
       scores.forEach((entry, index) => {
         const rank = index + 1;
         
-        // Ensure username exists, fall back to userId with more readable formatting
+        // IMPROVED: Prioritize using the username from database
+        // If no username exists, create a friendlier format for the user ID
         const displayName = entry.username 
           ? this.escapeHtml(entry.username)
           : `User-${entry.userId ? entry.userId.substring(0, 5) : 'Unknown'}`;

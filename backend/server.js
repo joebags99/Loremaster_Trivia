@@ -1976,63 +1976,54 @@ app.post("/submit-answer", async (req, res) => {
    * Leaderboard Endpoints
    */
   
-  // Get leaderboard data
-  app.get("/api/leaderboard", async (req, res) => {
-    try {
-      // Get top scores from database
-      const dbScores = await Score.findAll({
-        order: [['score', 'DESC']],
-        limit: 20
-      });
-      
-      // Extract all unique user IDs we need usernames for
-      const allUserIds = Array.from(new Set([
-        ...dbScores.map(entry => entry.userId),
-        ...Object.keys(userSessionScores)
-      ]));
-      
-      // Try to fetch any missing usernames from Twitch API
-      const missingIds = allUserIds.filter(id => !userIdToUsername[id] && !userIdToUsername[cleanUserId(id)]);
-      
-      if (missingIds.length > 0) {
-        await fetchUsernames(missingIds);
-      }
-      
-      // Create total leaderboard with usernames
-      const totalLeaderboard = dbScores.map(entry => ({
-        userId: entry.userId,
-        username: getUsername(entry.userId),
-        score: entry.score
-      }));
-      
-      // Create session leaderboard with usernames
-      const sessionScores = Object.entries(userSessionScores)
-        .map(([userId, score]) => ({
+// Get leaderboard data
+app.get("/api/leaderboard", async (req, res) => {
+  try {
+    // Get top scores from database
+    const dbScores = await Score.findAll({
+      order: [['score', 'DESC']],
+      limit: 20
+    });
+    
+    // Create total leaderboard directly using database usernames
+    const totalLeaderboard = dbScores.map(entry => ({
+      userId: entry.userId,
+      username: entry.username || `User-${entry.userId.substring(0, 5)}...`, // Fallback if no username
+      score: entry.score
+    }));
+    
+    // Create session leaderboard with usernames from database if available
+    const sessionScores = Object.entries(userSessionScores)
+      .map(([userId, score]) => {
+        // Try to find this user in the database scores to get username
+        const dbUser = dbScores.find(entry => entry.userId === userId);
+        return {
           userId,
-          username: getUsername(userId),
+          username: dbUser?.username || `User-${userId.substring(0, 5)}...`, // Use DB username if available
           score
-        }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 20);
-      
-      // Log samples of what we're returning
-      if (totalLeaderboard.length > 0) {
-        console.log("🏆 Total leaderboard sample:", totalLeaderboard.slice(0, 3));
-      }
-      
-      if (sessionScores.length > 0) {
-        console.log("🏆 Session leaderboard sample:", sessionScores.slice(0, 3));
-      }
-      
-      res.json({
-        total: totalLeaderboard,
-        session: sessionScores
-      });
-    } catch (error) {
-      console.error("❌ Error fetching leaderboard:", error);
-      res.status(500).json({ error: "Failed to fetch leaderboard" });
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
+    
+    // Log samples of what we're returning
+    if (totalLeaderboard.length > 0) {
+      console.log("🏆 Total leaderboard sample:", totalLeaderboard.slice(0, 3));
     }
-  });
+    
+    if (sessionScores.length > 0) {
+      console.log("🏆 Session leaderboard sample:", sessionScores.slice(0, 3));
+    }
+    
+    res.json({
+      total: totalLeaderboard,
+      session: sessionScores
+    });
+  } catch (error) {
+    console.error("❌ Error fetching leaderboard:", error);
+    res.status(500).json({ error: "Failed to fetch leaderboard" });
+  }
+});
   
   /**
    * Username Management Endpoints

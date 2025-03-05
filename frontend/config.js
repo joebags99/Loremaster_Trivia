@@ -1134,6 +1134,9 @@ const EventHandlers = {
     this.attachButtonListener(CONFIG.DOM_IDS.endTrivia, this.handleEndTrivia);
     this.attachButtonListener(CONFIG.DOM_IDS.saveFilters, this.handleSaveFilters);
     
+    // Identity button (if it exists)
+    this.attachButtonListener('identity-btn', this.handleRequestIdentity);
+    
     // Leaderboard controls
     this.attachButtonListener(CONFIG.DOM_IDS.showSessionScores, this.handleShowSessionScores);
     this.attachButtonListener(CONFIG.DOM_IDS.showTotalScores, this.handleShowTotalScores);
@@ -1154,7 +1157,23 @@ const EventHandlers = {
       button.addEventListener("click", handler.bind(this));
       console.log(`✅ Attached event listener to #${buttonId}`);
     } else {
-      console.error(`❌ Button #${buttonId} NOT found in DOM!`);
+      // Not necessarily an error for optional buttons
+      console.log(`ℹ️ Button #${buttonId} not found in DOM, skipping listener`);
+    }
+  },
+  
+  /**
+   * Handle identity request button
+   * Manually triggers the Twitch identity share flow
+   */
+  handleRequestIdentity(event) {
+    if (event) event.preventDefault();
+    console.log("🔑 Identity request button clicked");
+    
+    if (TwitchService.requestIdentity()) {
+      this.updateStatus("Identity request sent. Please accept the prompt.");
+    } else {
+      this.updateStatus("Failed to request identity. Please refresh the page.");
     }
   },
   
@@ -1333,13 +1352,15 @@ const EventHandlers = {
       console.error("❌ Missing broadcaster ID for starting trivia");
       UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Auth Error!");
       
-      // Try to reconnect and recover session
-      ApiService.reconnect().then(success => {
+      // Try to reconnect and recover session using TwitchService instead of ApiService
+      TwitchService.reconnect().then(success => {
         if (success) {
           // Prompt user to try again after reconnection
           setTimeout(() => {
             UI.showButtonError(CONFIG.DOM_IDS.startTrivia, "Try Again!");
           }, 1000);
+        } else {
+          this.promptReconnect("Authentication issue. Please wait...");
         }
       });
       return;
@@ -1372,6 +1393,10 @@ const EventHandlers = {
         if (data.success) {
           console.log("✅ Trivia started successfully");
           UI.showButtonSuccess(CONFIG.DOM_IDS.startTrivia, "Trivia Started!");
+          
+          // Ensure UI is up to date
+          TriviaState.setTriviaActive(true);
+          UI.setUIForTriviaActive(true);
         } else {
           console.error("❌ Error starting trivia:", data.error || "Unknown error");
           UI.showButtonError(CONFIG.DOM_IDS.startTrivia, data.error || "Start Failed!");
@@ -1501,6 +1526,7 @@ const EventHandlers = {
   
   /**
    * Prompt user to reconnect due to connection/auth issues
+   * Uses the new TwitchService.reconnect method
    * @param {string} message - Message to display
    */
   promptReconnect(message) {
@@ -1509,12 +1535,33 @@ const EventHandlers = {
     // Show status message
     this.updateStatus(message);
     
-    // Try to reconnect
-    ApiService.reconnect().then(success => {
+    // Try to reconnect using TwitchService
+    TwitchService.reconnect().then(success => {
       if (success) {
         this.updateStatus("Reconnected successfully!");
       } else {
-        this.updateStatus("Reconnection failed. Please refresh the page.");
+        // If TwitchService reconnect fails, provide manual option
+        this.updateStatus("Reconnection failed. Please try manually sharing your identity.");
+        
+        // Add a temporary identity button if it doesn't exist
+        if (!document.getElementById('identity-btn')) {
+          const container = document.getElementById(CONFIG.DOM_IDS.statusDisplay)?.parentNode;
+          if (container) {
+            const tempButton = document.createElement('button');
+            tempButton.id = 'temp-identity-btn';
+            tempButton.className = 'temp-auth-button';
+            tempButton.textContent = '🔑 Share Identity for Authentication';
+            tempButton.onclick = this.handleRequestIdentity.bind(this);
+            container.appendChild(tempButton);
+            
+            // Remove after 15 seconds
+            setTimeout(() => {
+              if (tempButton.parentNode) {
+                tempButton.parentNode.removeChild(tempButton);
+              }
+            }, 15000);
+          }
+        }
       }
     });
   },
@@ -1535,6 +1582,13 @@ const EventHandlers = {
     const statusEl = document.getElementById(CONFIG.DOM_IDS.statusDisplay);
     if (statusEl) {
       statusEl.textContent = message;
+      
+      // Highlight the status message briefly to draw attention
+      statusEl.style.transition = 'background-color 0.3s ease';
+      statusEl.style.backgroundColor = 'rgba(106, 61, 232, 0.2)';
+      setTimeout(() => {
+        statusEl.style.backgroundColor = 'transparent';
+      }, 800);
     }
   }
 };
@@ -1557,8 +1611,18 @@ const TwitchService = {
     if (window.Twitch && window.Twitch.ext) {
       console.log("✅ Twitch Extension SDK available");
       
+      // Check if we're already authorized
+      if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.id) {
+        console.log("👤 Already have viewer identity:", window.Twitch.ext.viewer.id);
+        console.log("🎙️ Channel:", window.Twitch.ext.viewer.channelId);
+        // Update status
+        if (document.getElementById(CONFIG.DOM_IDS.statusDisplay)) {
+          document.getElementById(CONFIG.DOM_IDS.statusDisplay).textContent = 
+            "Identity available. Loading...";
+        }
+      }
+      
       // CORRECTED: Use proper authentication request method
-      // The previous method requestEBS doesn't exist
       if (window.Twitch.ext.actions && typeof window.Twitch.ext.actions.requestIdShare === 'function') {
         console.log("🔑 Requesting Twitch identity sharing");
         window.Twitch.ext.actions.requestIdShare();
@@ -1571,6 +1635,11 @@ const TwitchService = {
       this.setupMessageListener();
       this.setupAuthorization();
       this.setupBroadcasterIdentity();
+      
+      // Set up dev fallback for testing environments
+      if (!Utils.isProduction()) {
+        this.setupDevFallback();
+      }
     } else {
       console.error("❌ Twitch Extension SDK not found");
       
@@ -1582,148 +1651,163 @@ const TwitchService = {
     }
   },
   
-/**
- * Set up broadcaster identity tracking with better error handling
- * Ensures at least the broadcaster has their username in the system
- */
-setupBroadcasterIdentity() {
-  if (!window.Twitch || !window.Twitch.ext) {
-    console.error("❌ Twitch Extension SDK not available");
-    return;
-  }
-  
-  // Check if we get the channel info
-  window.Twitch.ext.onAuthorized((auth) => {
-    if (auth.channelId) {
-      console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
-      
-      // Store broadcaster ID for API calls
-      TriviaState.data.broadcasterId = auth.channelId;
-      
-      // Try to get broadcaster display name from Twitch SDK
-      if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
-        const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
-        console.log(`🎙️ Channel display name: ${broadcasterName}`);
+  /**
+   * Set up broadcaster identity tracking with better error handling
+   * Ensures at least the broadcaster has their username in the system
+   */
+  setupBroadcasterIdentity() {
+    if (!window.Twitch || !window.Twitch.ext) {
+      console.error("❌ Twitch Extension SDK not available");
+      return;
+    }
+    
+    // Check if we get the channel info
+    window.Twitch.ext.onAuthorized((auth) => {
+      if (auth.channelId) {
+        console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
         
-        // Store for API calls
-        TriviaState.data.broadcasterName = broadcasterName;
+        // Store broadcaster ID for API calls
+        TriviaState.data.broadcasterId = auth.channelId;
         
-        // Send to server - special case for broadcaster
-        this.sendServerBroadcasterInfo(auth.channelId, broadcasterName, auth.token);
-      } else {
-        // Try to resolve via API endpoint with better error handling
-        this.resolveBroadcasterViaAPI(auth.channelId, auth.token);
+        // Try to get broadcaster display name from Twitch SDK
+        if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
+          const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
+          console.log(`🎙️ Channel display name: ${broadcasterName}`);
+          
+          // Store for API calls
+          TriviaState.data.broadcasterName = broadcasterName;
+          
+          // Send to server - special case for broadcaster
+          this.sendServerBroadcasterInfo(auth.channelId, broadcasterName, auth.token);
+        } else {
+          // Try to resolve via API endpoint with better error handling
+          this.resolveBroadcasterViaAPI(auth.channelId, auth.token);
+        }
       }
-    }
-  });
-},
+    });
+  },
 
-/**
- * Resolve broadcaster info via API with better error handling
- */
-resolveBroadcasterViaAPI(channelId, token) {
-  if (!channelId) {
-    console.error("❌ Missing channelId for broadcaster resolution");
-    return;
-  }
-  
-  console.log(`🔍 Resolving broadcaster info via API for channel ${channelId}`);
-  console.log(`🔑 Token available: ${token ? 'YES' : 'NO'}`);
-  
-  // Make the API request with better formatting and error handling
-  fetch(`${CONFIG.API_BASE_URL()}/api/set-broadcaster-name`, {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : undefined
-    },
-    body: JSON.stringify({
-      channelId: channelId,
-      jwt: token,
-      timestamp: Date.now()  // Add timestamp for debugging
+  /**
+   * Resolve broadcaster info via API with better error handling
+   */
+  resolveBroadcasterViaAPI(channelId, token) {
+    if (!channelId) {
+      console.error("❌ Missing channelId for broadcaster resolution");
+      return;
+    }
+    
+    console.log(`🔍 Resolving broadcaster info via API for channel ${channelId}`);
+    console.log(`🔑 Token available: ${token ? 'YES' : 'NO'}`);
+    
+    // Make the API request with better formatting and error handling
+    fetch(`${CONFIG.API_BASE_URL()}/api/set-broadcaster-name`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : undefined
+      },
+      body: JSON.stringify({
+        channelId: channelId,
+        jwt: token,
+        timestamp: Date.now()  // Add timestamp for debugging
+      })
     })
-  })
-  .then(response => {
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-    return response.json();
-  })
-  .then(data => {
-    if (data.success && data.displayName) {
-      console.log(`🎙️ Resolved broadcaster name via API: ${data.displayName}`);
-      TriviaState.data.broadcasterName = data.displayName;
-    } else {
-      console.warn(`⚠️ Server response did not contain broadcaster name: ${JSON.stringify(data)}`);
-    }
-  })
-  .catch(error => {
-    console.error("❌ Failed to resolve broadcaster name:", error);
-    
-    // Try fallback method - send directly to server
-    if (token) {
-      console.log("🔄 Trying direct Twitch API lookup fallback");
-      this.sendServerBroadcasterInfo(channelId, null, token);
-    }
-  });
-},
-
-/**
- * Send broadcaster info directly to server with JWT
- * This allows the server to use the token to look up the info
- */
-sendServerBroadcasterInfo(channelId, displayName, token) {
-  // Build the message data
-  const messageData = {
-    type: 'BROADCASTER_IDENTITY',
-    channelId: channelId,
-  };
-  
-  // Add display name if available
-  if (displayName) {
-    messageData.displayName = displayName;
-  }
-  
-  // Send to server with JWT in headers
-  fetch(`${CONFIG.API_BASE_URL()}/twitch/broadcaster-identity`, {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : undefined
-    },
-    body: JSON.stringify(messageData)
-  })
-  .then(response => response.json())
-  .then(data => {
-    console.log("✅ Broadcaster identity sent to server:", data);
-  })
-  .catch(error => {
-    console.error("❌ Error sending broadcaster identity to server:", error);
-  });
-},
-
-/**
- * Set up Twitch authorization handling with better token management
- */
-setupAuthorization() {
-  window.Twitch.ext.onAuthorized((auth) => {
-    // Log full auth object but mask most of token for security
-    const maskedToken = auth.token ? 
-      `${auth.token.substring(0, 10)}...${auth.token.substring(auth.token.length - 5)}` : 
-      'MISSING';
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (data.success && data.displayName) {
+        console.log(`🎙️ Resolved broadcaster name via API: ${data.displayName}`);
+        TriviaState.data.broadcasterName = data.displayName;
+      } else {
+        console.warn(`⚠️ Server response did not contain broadcaster name: ${JSON.stringify(data)}`);
+      }
+    })
+    .catch(error => {
+      console.error("❌ Failed to resolve broadcaster name:", error);
       
-    console.log(`✅ Extension authorized: channelId=${auth.channelId}, clientId=${auth.clientId}, userId=${auth.userId}, token=${maskedToken}`);
+      // Try fallback method - send directly to server
+      if (token) {
+        console.log("🔄 Trying direct Twitch API lookup fallback");
+        this.sendServerBroadcasterInfo(channelId, null, token);
+      }
+    });
+  },
+
+  /**
+   * Send broadcaster info directly to server with JWT
+   * This allows the server to use the token to look up the info
+   */
+  sendServerBroadcasterInfo(channelId, displayName, token) {
+    // Build the message data
+    const messageData = {
+      type: 'BROADCASTER_IDENTITY',
+      channelId: channelId,
+    };
     
-    // Store auth data in state
-    TriviaState.setAuthData(auth.channelId, auth.token);
+    // Add display name if available
+    if (displayName) {
+      messageData.displayName = displayName;
+    }
     
-    // Save auth data for persistence between panel reloads
-    this.saveAuthToSession(auth);
+    // Send to server with JWT in headers
+    fetch(`${CONFIG.API_BASE_URL()}/twitch/broadcaster-identity`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : undefined
+      },
+      body: JSON.stringify(messageData)
+    })
+    .then(response => response.json())
+    .then(data => {
+      console.log("✅ Broadcaster identity sent to server:", data);
+    })
+    .catch(error => {
+      console.error("❌ Error sending broadcaster identity to server:", error);
+    });
+  },
+
+  /**
+   * Set up Twitch authorization handling with better token management
+   */
+  setupAuthorization() {
+    if (!window.Twitch || !window.Twitch.ext) {
+      console.error("❌ Cannot set up authorization: Twitch SDK not available");
+      return;
+    }
     
-    // Initialize app data after authorization
-    this.initializeAfterAuth();
-  });
-},
+    window.Twitch.ext.onAuthorized((auth) => {
+      // Log full auth details (with token partially masked)
+      const maskedToken = auth.token ? 
+        `${auth.token.substring(0, 10)}...${auth.token.substring(auth.token.length - 5)}` : 
+        'MISSING';
+        
+      console.log(`🔑 AUTHORIZED: userId=${auth.userId}, channelId=${auth.channelId}, token=${maskedToken}`);
+      
+      // Validate auth data before storing
+      if (!auth.channelId || !auth.token) {
+        console.error("❌ Incomplete auth data received:", auth);
+        EventHandlers.updateStatus("Authentication error. Please refresh.");
+        return;
+      }
+      
+      // Store auth data in state with validation
+      TriviaState.setAuthData(auth.channelId, auth.token);
+      
+      // Save to session storage
+      this.saveAuthToSession(auth);
+      
+      // Update UI to reflect authentication
+      EventHandlers.updateStatus("✅ Authentication successful!");
+      
+      // Initialize app data after authorization
+      this.initializeAfterAuth();
+    });
+  },
 
   /**
    * Save current auth data to session storage
@@ -1749,6 +1833,13 @@ setupAuthorization() {
       // Save to session storage
       sessionStorage.setItem('twitchAuthData', JSON.stringify(authData));
       console.log("💾 Auth data saved to session storage");
+      
+      // Also log if the user has allowed identity sharing
+      if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.isLinked) {
+        console.log("👤 User has shared identity. Username:", 
+          window.Twitch.ext.viewer.displayName || "unknown");
+      }
+      
       return true;
     } catch (error) {
       console.error("❌ Failed to save auth data to session storage:", error);
@@ -1790,35 +1881,43 @@ setupAuthorization() {
       return false;
     }
   },
-
-  /**
-   * Set up Twitch authorization handling
-   */
-  setupAuthorization() {
-    if (!window.Twitch || !window.Twitch.ext) {
-      console.error("❌ Cannot set up authorization: Twitch SDK not available");
-      return;
-    }
   
-    window.Twitch.ext.onAuthorized((auth) => {
-      // Your existing auth handler code
-      console.log("✅ Extension authorized:", auth.channelId);
-      
-      // Store auth data in state
-      TriviaState.setAuthData(auth.channelId, auth.token);
-      
-      // Save auth data for persistence between panel reloads
-      this.saveAuthToSession(auth);
-      
-      // Initialize app data after authorization
-      this.initializeAfterAuth();
-    });
+  /**
+   * Set up a development fallback for auth
+   * Only used in development environments
+   */
+  setupDevFallback() {
+    // Only use in development environments
+    if (Utils.isProduction()) return;
+    
+    console.log("🔧 Setting up development fallback auth");
+    
+    // If we haven't gotten auth within 3 seconds, create a fallback
+    setTimeout(() => {
+      if (!TriviaState.hasValidAuth()) {
+        console.log("⚠️ No auth after timeout, using development fallback");
+        
+        // Set minimal auth data for development
+        TriviaState.setAuthData("123456789", "dev_mock_token_for_testing");
+        
+        // Update status
+        EventHandlers.updateStatus("Using development fallback auth");
+        
+        // Initialize app data
+        this.initializeAfterAuth();
+      }
+    }, 3000);
   },
   
   /**
    * Set up listener for Twitch PubSub messages
    */
   setupMessageListener() {
+    if (!window.Twitch || !window.Twitch.ext) {
+      console.error("❌ Cannot set up message listener: Twitch SDK not available");
+      return;
+    }
+    
     window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
       console.log("📩 Received Twitch broadcast:", target, contentType);
       
@@ -1984,6 +2083,76 @@ setupAuthorization() {
   },
   
   /**
+   * Helper to manually trigger identity request
+   * Can be called directly for manual authentication
+   * @returns {boolean} Success or failure
+   */
+  requestIdentity() {
+    if (window.Twitch && window.Twitch.ext && window.Twitch.ext.actions) {
+      if (typeof window.Twitch.ext.actions.requestIdShare === 'function') {
+        console.log("🔑 Manually requesting Twitch identity sharing");
+        window.Twitch.ext.actions.requestIdShare();
+        return true;
+      }
+    }
+    console.error("❌ Cannot request identity: Twitch SDK action not available");
+    return false;
+  },
+  
+  /**
+   * Attempt to reconnect and get fresh authentication
+   * @returns {Promise<boolean>} Success or failure
+   */
+  async reconnect() {
+    console.log("🔄 Attempting API reconnection");
+    
+    try {
+      // Request new authorization from Twitch instead of just failing
+      if (!TriviaState.data.broadcasterId || !TriviaState.data.authToken) {
+        console.log("🔄 Missing auth data, requesting new identity share from Twitch");
+        if (window.Twitch && window.Twitch.ext && window.Twitch.ext.actions) {
+          // Use the correct method
+          if (typeof window.Twitch.ext.actions.requestIdShare === 'function') {
+            window.Twitch.ext.actions.requestIdShare();
+            return true; // We've started the reauthorization process
+          }
+        } else {
+          console.error("❌ Twitch SDK not available for reauthorization");
+          return false;
+        }
+      }
+      
+      // If we have auth data already, try to test it
+      if (TriviaState.data.authToken) {
+        // Test token with a simple API call
+        try {
+          const testResponse = await fetch(`${CONFIG.API_BASE_URL()}/api/ping`, {
+            headers: {
+              'Authorization': `Bearer ${TriviaState.data.authToken}`
+            }
+          });
+          
+          if (testResponse.ok) {
+            console.log("✅ Token still valid");
+            return true;
+          } else {
+            console.log("❌ Token invalid, requesting new identity");
+            this.requestIdentity();
+          }
+        } catch (error) {
+          console.error("❌ Token test failed:", error);
+          this.requestIdentity();
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error("❌ Error during API reconnection:", error);
+      return false;
+    }
+  },
+  
+  /**
    * Send a message via Twitch PubSub
    * @param {Object} message - The message to send
    * @returns {boolean} Success status
@@ -2039,8 +2208,27 @@ setupAuthorization() {
     // Create mock Twitch object
     window.Twitch = {
       ext: {
+        actions: {
+          // Update mock to match real SDK method names
+          requestIdShare: () => {
+            console.log("🔧 Mock requestIdShare called");
+            
+            // Auto-resolve with mock data in development
+            setTimeout(() => {
+              if (window.Twitch.ext.onAuthorized && typeof window.Twitch.ext.onAuthorized.callback === 'function') {
+                window.Twitch.ext.onAuthorized.callback({
+                  userId: "mock-user-123",
+                  channelId: "70361469", 
+                  token: "mock-token-for-testing"
+                });
+              }
+            }, 500);
+          }
+        },
+        
         onAuthorized: (callback) => {
-          console.log("🔧 Mock Twitch auth triggered");
+          console.log("🔧 Mock Twitch auth handler registered");
+          window.Twitch.ext.onAuthorized.callback = callback;
           
           // Simulate auth with test broadcaster ID
           setTimeout(() => {
@@ -2062,6 +2250,14 @@ setupAuthorization() {
           
           // Simulate responses based on message type
           this.simulateMockResponse(message);
+        },
+        
+        // Mock viewer object
+        viewer: {
+          id: "mock-user-123",
+          isLinked: true,
+          displayName: "MockUser",
+          channelId: "70361469"
         }
       }
     };
@@ -2218,6 +2414,7 @@ setupAuthorization() {
     debugPanel.style.fontSize = '12px';
     debugPanel.innerHTML = `
       <div style="margin-bottom:8px"><strong>Mock Twitch Controls</strong></div>
+      <button id="mock-auth" style="margin:2px;padding:5px">Simulate Auth</button>
       <button id="mock-trivia-start" style="margin:2px;padding:5px">Simulate Trivia Start</button>
       <button id="mock-trivia-end" style="margin:2px;padding:5px">Simulate Trivia End</button>
     `;
@@ -2225,6 +2422,16 @@ setupAuthorization() {
     document.body.appendChild(debugPanel);
     
     // Add event listeners
+    document.getElementById('mock-auth').addEventListener('click', () => {
+      if (window.Twitch.ext.onAuthorized && typeof window.Twitch.ext.onAuthorized.callback === 'function') {
+        window.Twitch.ext.onAuthorized.callback({
+          userId: "mock-user-123",
+          channelId: "70361469", 
+          token: "mock-token-for-testing"
+        });
+      }
+    });
+    
     document.getElementById('mock-trivia-start').addEventListener('click', () => {
       if (window.mockTwitchCallback) {
         window.mockTwitchCallback('broadcast', 'application/json',

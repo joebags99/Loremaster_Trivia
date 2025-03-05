@@ -2257,6 +2257,11 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
         console.log("⚠️ Trivia is already running. Ignoring start request.");
         return res.json({ success: false, message: "Trivia is already running!" });
       }
+
+    // If force is true, end any existing trivia first
+    if (triviaActive && req.body.force) {
+      await endTrivia(req.body.broadcasterId || EXT_OWNER_ID);
+    }
   
       const broadcasterId = req.body.broadcasterId || EXT_OWNER_ID;
       const success = await startTrivia(broadcasterId);
@@ -2425,6 +2430,15 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
     }
   });
   
+// Add to server.js
+app.get("/trivia-status", (req, res) => {
+  res.json({
+    triviaActive,
+    nextQuestionTime: nextQuestionTime ? nextQuestionTime - Date.now() : null,
+    settings: triviaSettings
+  });
+}); 
+
   // GET endpoint for testing trivia
   app.get("/trivia", async (req, res) => {
     try {

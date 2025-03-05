@@ -442,6 +442,8 @@ const ApiService = {
       throw error;
     }
   },
+
+  
   
   /**
    * Save trivia settings
@@ -492,6 +494,18 @@ const ApiService = {
       };
     }
   },
+
+    // Add this method inside the ApiService object
+    async checkTriviaStatus() {
+      try {
+        console.log("🔍 Checking current trivia status");
+        const response = await this.request('/trivia-status');
+        return response;
+      } catch (error) {
+        console.error("❌ Error checking trivia status:", error);
+        throw error;
+      }
+    },
   
   /**
    * Save filter preferences for broadcaster
@@ -1955,55 +1969,68 @@ const TwitchService = {
     console.log("✅ Twitch message listener set up");
   },
   
-  /**
-   * Initialize data loading after authentication
-   */
-  initializeAfterAuth() {
-    console.log("🔄 Loading initial data after Twitch auth");
-    
-    // Add detailed debugging for API requests
-    console.log(`🔍 Auth state: broadcasterId=${TriviaState.data.broadcasterId}, token=${TriviaState.data.authToken ? (TriviaState.data.authToken.substring(0, 10) + '...') : 'MISSING'}`);
-    
-    // Load categories from API or Twitch
-    ApiService.getCategories()
+/**
+ * Initialize data loading after authentication
+ */
+initializeAfterAuth() {
+  console.log("🔄 Loading initial data after Twitch auth");
+  
+  // Add detailed debugging for API requests
+  console.log(`🔍 Auth state: broadcasterId=${TriviaState.data.broadcasterId}, token=${TriviaState.data.authToken ? (TriviaState.data.authToken.substring(0, 10) + '...') : 'MISSING'}`);
+  
+  // Load categories from API or Twitch
+  ApiService.getCategories()
+    .then(() => {
+      UI.renderCategories();
+    })
+    .catch(error => {
+      console.error("❌ Failed to load categories:", error);
+    });
+  
+  // Load difficulties from API or Twitch
+  ApiService.getDifficulties()
+    .then(() => {
+      UI.renderDifficulties();
+    })
+    .catch(error => {
+      console.error("❌ Failed to load difficulties:", error);
+    });
+  
+  // Load broadcaster settings (filter preferences)
+  if (TriviaState.data.broadcasterId) {
+    ApiService.getBroadcasterSettings(TriviaState.data.broadcasterId)
       .then(() => {
+        // Update UI checkboxes based on loaded settings
         UI.renderCategories();
-      })
-      .catch(error => {
-        console.error("❌ Failed to load categories:", error);
-      });
-    
-    // Load difficulties from API or Twitch
-    ApiService.getDifficulties()
-      .then(() => {
         UI.renderDifficulties();
+        UI.updateQuestionStats();
       })
       .catch(error => {
-        console.error("❌ Failed to load difficulties:", error);
-      });
-    
-    // Load broadcaster settings (filter preferences)
-    if (TriviaState.data.broadcasterId) {
-      ApiService.getBroadcasterSettings(TriviaState.data.broadcasterId)
-        .then(() => {
-          // Update UI checkboxes based on loaded settings
-          UI.renderCategories();
-          UI.renderDifficulties();
-          UI.updateQuestionStats();
-        })
-        .catch(error => {
-          console.error("❌ Failed to load broadcaster settings:", error);
-          
-          // Try fallback via Twitch messaging
-          this.sendMessage({
-            type: 'GET_BROADCASTER_SETTINGS',
-            broadcasterId: TriviaState.data.broadcasterId
-          });
+        console.error("❌ Failed to load broadcaster settings:", error);
+        
+        // Try fallback via Twitch messaging
+        this.sendMessage({
+          type: 'GET_BROADCASTER_SETTINGS',
+          broadcasterId: TriviaState.data.broadcasterId
         });
-    } else {
-      console.warn("⚠️ No broadcaster ID available for loading settings");
-    }
-  },
+      });
+  } else {
+    console.warn("⚠️ No broadcaster ID available for loading settings");
+  }
+  
+  // Check trivia status
+  ApiService.checkTriviaStatus()
+    .then(status => {
+      if (status.triviaActive) {
+        TriviaState.setTriviaActive(true);
+        UI.setUIForTriviaActive(true);
+        console.log("✅ Synced trivia active state from server");
+      }
+    })
+    .catch(error => {
+      console.error("❌ Failed to check trivia status:", error);
+    });
+},
   
   /**
    * Handle received Twitch messages

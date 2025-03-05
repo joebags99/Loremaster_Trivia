@@ -257,20 +257,6 @@ app.get("/overlay", (req, res) => {
   console.log("✅ Serving overlay.html from:", frontendPath);
 });
 
-/**
- * Start server after Database Check
- */
-async function startServer() {
-  // Test database connection first
-  await testDatabaseConnection();
-  
-  // Start listening on port
-  app.listen(PORT, () => {
-    console.log(`✅ Server listening on port ${PORT}`);
-    console.log(`✅ Access at http://localhost:${PORT}`);
-  });
-}
-
 // Start server
 startServer().catch(err => {
   console.error("❌ Failed to start server:", err);

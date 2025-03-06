@@ -212,43 +212,66 @@ function handleAuthorization(auth) {
     }
   }
   
-  // ======================================================
-  // 3. BROADCAST MESSAGE HANDLERS
-  // ======================================================
+// ======================================================
+// 3. BROADCAST MESSAGE HANDLERS
+// ======================================================
+
+/**
+ * Handle settings update message
+ * @param {Object} data - Settings data
+ */
+function handleSettingsUpdate(data) {
+  console.log("⚙️ Updating settings:", data);
+  TriviaState.settings.answerTime = data.answerTime || TriviaState.settings.answerTime;
+  TriviaState.settings.intervalTime = data.intervalTime || TriviaState.settings.intervalTime;
+}
+
+/**
+ * Handle trivia start message
+ * @param {Object} data - Trivia start data
+ */
+function handleTriviaStart(data) {
+  console.log("🚀 Trivia has started!");
+  TriviaState.triviaActive = true;
   
-  /**
-   * Handle settings update message
-   * @param {Object} data - Settings data
-   */
-  function handleSettingsUpdate(data) {
-    console.log("⚙️ Updating settings:", data);
-    TriviaState.settings.answerTime = data.answerTime || TriviaState.settings.answerTime;
-    TriviaState.settings.intervalTime = data.intervalTime || TriviaState.settings.intervalTime;
+  // Set next question time but don't show timer yet
+  const intervalTime = data.intervalTime || TriviaState.settings.intervalTime;
+  TriviaState.nextQuestionTime = Date.now() + intervalTime;
+  
+  // Update UI state but don't show timer immediately
+  UI.setUIState("countdown");
+  
+  // Hide the timer initially
+  if (UI.countdownTimer) {
+    UI.countdownTimer.style.display = "none";
   }
   
-  /**
-   * Handle trivia start message
-   * @param {Object} data - Trivia start data
-   */
-  function handleTriviaStart(data) {
-    console.log("🚀 Trivia has started!");
-    TriviaState.triviaActive = true;
+  // Wait briefly for the correct time to arrive from server
+  setTimeout(() => {
+    // Calculate the current time remaining
+    const currentTime = TriviaState.nextQuestionTime - Date.now();
+    TimerManager.updateCountdown(currentTime);
     
-    // Set next question time
-    const intervalTime = data.intervalTime || TriviaState.settings.intervalTime;
-    TriviaState.nextQuestionTime = Date.now() + intervalTime;
-    
-    // Update UI
-    UI.setUIState("countdown");
-    TimerManager.updateCountdown(intervalTime);
-  }
-  
- /**
- * Handle trivia question message with duplicate detection
+    // Now show the timer with correct value
+    if (UI.countdownTimer) {
+      UI.countdownTimer.style.display = "inline";
+    }
+  }, 500); // Half-second delay
+}
+
+/**
+ * Handle trivia question message from broadcast
+ * This is now the exclusive source of questions for all clients
  * @param {Object} data - Question data
  */
 function handleTriviaQuestion(data) {
-  console.log("🎯 Received trivia question");
+  console.log("📣 Received trivia question from broadcast");
+  
+  // Validate essential question data
+  if (!data.question || !data.choices || !data.correctAnswer) {
+    console.error("❌ Received incomplete question data:", data);
+    return;
+  }
   
   // Track the last question timestamp to detect duplicates
   if (!TriviaState.lastQuestionTimestamp) {
@@ -264,22 +287,31 @@ function handleTriviaQuestion(data) {
   // Update the last question timestamp
   if (data.timestamp) {
     TriviaState.lastQuestionTimestamp = data.timestamp;
+    console.log(`📝 Updated question timestamp to: ${data.timestamp}`);
   }
   
-  // Reset request flag and display the question
+  // Clear any pending question requested flags
   TriviaState.questionRequested = false;
+  
+  // Log difficulty and question ID if available
+  if (data.difficulty || data.questionId) {
+    console.log(`📋 Question details: ID=${data.questionId || 'unknown'}, Difficulty=${data.difficulty || 'unknown'}`);
+  }
+  
+  // Display the question to the user
+  console.log(`🎮 Displaying question to user: "${data.question.substring(0, 50)}..."`);
   QuestionManager.displayQuestion(data);
 }
-  
-  /**
-   * Handle trivia end message
-   */
-  function handleTriviaEnd() {
-    console.log("⛔ Trivia has ended");
-    TriviaState.triviaActive = false;
-    TriviaState.nextQuestionTime = null;
-    UI.setUIState("ended");
-  }
+
+/**
+ * Handle trivia end message
+ */
+function handleTriviaEnd() {
+  console.log("⛔ Trivia has ended");
+  TriviaState.triviaActive = false;
+  TriviaState.nextQuestionTime = null;
+  UI.setUIState("ended");
+}
   
   // ======================================================
   // 4. UI MANAGEMENT
@@ -319,6 +351,409 @@ function handleTriviaQuestion(data) {
         break;
     }
   };
+
+  /**
+ * 🧙‍♂️ Loremaster Trivia - Magical UI Effects
+ * Add these functions to your script.js file to enhance the UI with magical interactions
+ */
+
+// Initialize all magical effects
+function initMagicalEffects() {
+  console.log("✨ Initializing magical UI effects");
+  
+  // Only initialize if we're not on a mobile device
+  if (window.innerWidth > 768) {
+    addButtonSparkles();
+    addHoverEffects();
+    addMagicCursor();
+  }
+  
+  // These effects work well on all devices
+  addEntranceAnimations();
+  improveTimerAnimation();
+}
+
+// Add magical sparkle effects to buttons
+function addButtonSparkles() {
+  const buttons = document.querySelectorAll('.choice-button, button');
+  
+  buttons.forEach(button => {
+    button.addEventListener('mousemove', (e) => {
+      // Only create sparkles occasionally for performance
+      if (Math.random() > 0.8) {
+        createSparkle(e, button);
+      }
+    });
+    
+    // Add extra sparkles on click
+    button.addEventListener('click', (e) => {
+      // Create multiple sparkles on click
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+          createSparkle(e, button, true);
+        }, i * 50);
+      }
+    });
+  });
+}
+
+// Create a single sparkle element
+function createSparkle(e, parent, isClick = false) {
+  const sparkle = document.createElement('span');
+  sparkle.className = 'magical-sparkle';
+  
+  // Position at mouse coordinates relative to parent
+  const rect = parent.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  sparkle.style.left = x + 'px';
+  sparkle.style.top = y + 'px';
+  
+  // Randomize size slightly
+  const size = Math.random() * 4 + 2;
+  sparkle.style.width = size + 'px';
+  sparkle.style.height = size + 'px';
+  
+  // Add randomized movement
+  const angle = Math.random() * Math.PI * 2;
+  const distance = isClick ? Math.random() * 80 + 20 : Math.random() * 40 + 10;
+  sparkle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
+  sparkle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
+  
+  // Add randomized color for click sparkles
+  if (isClick) {
+    const hue = Math.random() * 60 + 40; // Gold-ish range
+    sparkle.style.background = `hsl(${hue}, 100%, 75%)`;
+    sparkle.style.boxShadow = `0 0 4px hsl(${hue}, 100%, 75%)`;
+  }
+  
+  // Add to parent and remove after animation completes
+  parent.appendChild(sparkle);
+  setTimeout(() => {
+    sparkle.remove();
+  }, 1500);
+}
+
+// Add subtle hover effects to UI elements
+function addHoverEffects() {
+  // Add hover glow to difficulty indicators
+  const difficultyIndicators = document.querySelectorAll('.difficulty-indicator');
+  difficultyIndicators.forEach(indicator => {
+    indicator.addEventListener('mouseenter', () => {
+      indicator.style.transform = 'scale(1.05)';
+      indicator.style.boxShadow = '0 5px 15px rgba(0, 0, 0, 0.3)';
+    });
+    
+    indicator.addEventListener('mouseleave', () => {
+      indicator.style.transform = 'scale(1)';
+      indicator.style.boxShadow = '0 3px 6px rgba(0, 0, 0, 0.2)';
+    });
+  });
+  
+  // Make the question box pulse subtly when hovered
+  const questionBox = document.getElementById('question-box');
+  if (questionBox) {
+    questionBox.addEventListener('mouseenter', () => {
+      questionBox.style.boxShadow = '0 0 30px rgba(106, 61, 232, 0.4)';
+      questionBox.style.borderColor = '#9b7aff';
+    });
+    
+    questionBox.addEventListener('mouseleave', () => {
+      questionBox.style.boxShadow = '0 0 20px rgba(106, 61, 232, 0.3)';
+      questionBox.style.borderColor = '';
+    });
+  }
+}
+
+// Add magical following cursor effect
+function addMagicCursor() {
+  // Create cursor elements
+  const cursorOuter = document.createElement('div');
+  cursorOuter.className = 'cursor-outer';
+  cursorOuter.style.cssText = `
+    position: fixed;
+    width: 30px;
+    height: 30px;
+    border: 2px solid rgba(155, 122, 255, 0.5);
+    border-radius: 50%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    transition: width 0.2s, height 0.2s, border-color 0.2s;
+    mix-blend-mode: difference;
+  `;
+  
+  const cursorInner = document.createElement('div');
+  cursorInner.className = 'cursor-inner';
+  cursorInner.style.cssText = `
+    position: fixed;
+    width: 8px;
+    height: 8px;
+    background-color: rgba(255, 204, 0, 0.8);
+    border-radius: 50%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    transition: width 0.1s, height 0.1s, background-color 0.1s;
+  `;
+  
+  document.body.appendChild(cursorOuter);
+  document.body.appendChild(cursorInner);
+  
+  // Update cursor position with smoothing
+  document.addEventListener('mousemove', (e) => {
+    // Update inner cursor immediately
+    cursorInner.style.left = e.clientX + 'px';
+    cursorInner.style.top = e.clientY + 'px';
+    
+    // Update outer cursor with a slight delay for trailing effect
+    setTimeout(() => {
+      cursorOuter.style.left = e.clientX + 'px';
+      cursorOuter.style.top = e.clientY + 'px';
+    }, 50);
+  });
+  
+  // Add interactive effects
+  document.addEventListener('mousedown', () => {
+    cursorOuter.style.width = '25px';
+    cursorOuter.style.height = '25px';
+    cursorOuter.style.borderColor = 'rgba(255, 204, 0, 0.8)';
+    
+    cursorInner.style.width = '6px';
+    cursorInner.style.height = '6px';
+    cursorInner.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+  });
+  
+  document.addEventListener('mouseup', () => {
+    cursorOuter.style.width = '30px';
+    cursorOuter.style.height = '30px';
+    cursorOuter.style.borderColor = 'rgba(155, 122, 255, 0.5)';
+    
+    cursorInner.style.width = '8px';
+    cursorInner.style.height = '8px';
+    cursorInner.style.backgroundColor = 'rgba(255, 204, 0, 0.8)';
+  });
+  
+  // Enhance cursor over interactive elements
+  document.querySelectorAll('button, .choice-button, input').forEach(element => {
+    element.addEventListener('mouseenter', () => {
+      cursorOuter.style.width = '40px';
+      cursorOuter.style.height = '40px';
+      cursorOuter.style.borderColor = 'rgba(255, 204, 0, 0.8)';
+      cursorOuter.style.mixBlendMode = 'normal';
+    });
+    
+    element.addEventListener('mouseleave', () => {
+      cursorOuter.style.width = '30px';
+      cursorOuter.style.height = '30px';
+      cursorOuter.style.borderColor = 'rgba(155, 122, 255, 0.5)';
+      cursorOuter.style.mixBlendMode = 'difference';
+    });
+  });
+  
+  // Hide default cursor
+  document.body.style.cursor = 'none';
+  
+  // Also hide default cursor on all interactive elements
+  document.querySelectorAll('button, .choice-button, input, a').forEach(element => {
+    element.style.cursor = 'none';
+  });
+}
+
+// Add magical entrance animations to UI elements
+function addEntranceAnimations() {
+  // Animate question appearance
+  if (QuestionManager && QuestionManager.displayQuestion) {
+    // Store the original function
+    const originalDisplayQuestion = QuestionManager.displayQuestion;
+    
+    // Override with animated version
+    QuestionManager.displayQuestion = function(data) {
+      originalDisplayQuestion.call(this, data);
+      
+      // Add animations after original function renders elements
+      animateQuestionAppearance();
+    };
+  }
+  
+  // Add special animations when correct answer is revealed
+  if (QuestionManager && QuestionManager.revealCorrectAnswer) {
+    // Store the original function
+    const originalRevealCorrectAnswer = QuestionManager.revealCorrectAnswer;
+    
+    // Override with animated version
+    QuestionManager.revealCorrectAnswer = function(correctAnswer) {
+      originalRevealCorrectAnswer.call(this, correctAnswer);
+      
+      // Add special animations after correct answer is revealed
+      animateCorrectAnswerReveal(correctAnswer);
+    };
+  }
+}
+
+// Animate question appearance
+function animateQuestionAppearance() {
+  // Animate question text
+  const questionText = document.getElementById('question-text');
+  if (questionText) {
+    questionText.style.opacity = '0';
+    questionText.style.transform = 'translateY(-10px)';
+    
+    setTimeout(() => {
+      questionText.style.transition = 'opacity 0.5s ease-out, transform 0.5s ease-out';
+      questionText.style.opacity = '1';
+      questionText.style.transform = 'translateY(0)';
+    }, 100);
+  }
+  
+  // Animate choice buttons one by one
+  const choiceButtons = document.querySelectorAll('.choice-button');
+  choiceButtons.forEach((button, index) => {
+    button.style.opacity = '0';
+    button.style.transform = 'translateY(20px)';
+    
+    setTimeout(() => {
+      button.style.transition = 'opacity 0.4s ease-out, transform 0.4s ease-out';
+      button.style.opacity = '1';
+      button.style.transform = 'translateY(0)';
+    }, 200 + index * 100);
+  });
+}
+
+// Animate correct answer reveal with magical effects
+function animateCorrectAnswerReveal(correctAnswer) {
+  // Find the correct button
+  const buttons = document.querySelectorAll('.choice-button');
+  buttons.forEach(btn => {
+    if (btn.textContent === correctAnswer && btn.classList.contains('correct')) {
+      // Add starburst effect around correct answer
+      createStarburst(btn);
+    }
+  });
+}
+
+// Create starburst effect for correct answer
+function createStarburst(element) {
+  const rect = element.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  
+  // Create starburst container
+  const starburst = document.createElement('div');
+  starburst.style.cssText = `
+    position: fixed;
+    top: ${centerY}px;
+    left: ${centerX}px;
+    transform: translate(-50%, -50%);
+    width: 0;
+    height: 0;
+    z-index: 9998;
+    pointer-events: none;
+  `;
+  
+  document.body.appendChild(starburst);
+  
+  // Create rays
+  const rayCount = 12;
+  for (let i = 0; i < rayCount; i++) {
+    const ray = document.createElement('div');
+    const angle = (i / rayCount) * Math.PI * 2;
+    const length = 30 + Math.random() * 20;
+    
+    ray.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      background: linear-gradient(90deg, #ffcc00, transparent);
+      height: 2px;
+      width: ${length}px;
+      transform: rotate(${angle}rad);
+      transform-origin: left center;
+      opacity: 0;
+      animation: rayGrow 0.5s ease-out forwards;
+    `;
+    
+    starburst.appendChild(ray);
+  }
+  
+  // Add CSS animation
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes rayGrow {
+      0% { opacity: 0; width: 0; }
+      50% { opacity: 1; }
+      100% { opacity: 0; width: 80px; }
+    }
+  `;
+  
+  document.head.appendChild(style);
+  
+  // Remove starburst after animation
+  setTimeout(() => {
+    starburst.remove();
+    style.remove();
+  }, 1000);
+}
+
+// Improve timer animation with pulsating effect
+function improveTimerAnimation() {
+  const timerBar = document.getElementById('timer-bar');
+  if (!timerBar) return;
+  
+  // Add pulsating glow when time is running low
+  const originalWidth = getComputedStyle(timerBar).width;
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.attributeName === 'style') {
+        const width = parseFloat(timerBar.style.width);
+        
+        // When timer is below 30%, add urgency effects
+        if (width <= 30 && width > 0) {
+          timerBar.style.boxShadow = '0 0 15px rgba(255, 0, 0, 0.7)';
+          timerBar.style.background = 'linear-gradient(90deg, #ff4757, #ff6b6b)';
+          
+          // Add pulsating animation
+          if (!timerBar.classList.contains('pulsating')) {
+            timerBar.classList.add('pulsating');
+            
+            // Add keyframes for pulsating effect if not already added
+            if (!document.getElementById('timer-pulse-keyframes')) {
+              const keyframes = document.createElement('style');
+              keyframes.id = 'timer-pulse-keyframes';
+              keyframes.textContent = `
+                @keyframes timerPulse {
+                  0% { opacity: 1; }
+                  50% { opacity: 0.7; }
+                  100% { opacity: 1; }
+                }
+                
+                .pulsating {
+                  animation: timerPulse 0.5s infinite !important;
+                }
+              `;
+              document.head.appendChild(keyframes);
+            }
+          }
+        } else {
+          // Reset to normal style
+          timerBar.style.boxShadow = '';
+          timerBar.style.background = '';
+          timerBar.classList.remove('pulsating');
+        }
+      }
+    });
+  });
+  
+  // Start observing the timer
+  observer.observe(timerBar, { attributes: true });
+}
+
+// Call initialization when document is ready
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialize magical effects only after UI is ready
+  setTimeout(initMagicalEffects, 500);
+});
   
   // ======================================================
   // 5. USER MANAGEMENT
@@ -597,164 +1032,149 @@ function handleTriviaQuestion(data) {
     }
   };
   
-  // ======================================================
-  // 7. TIMER MANAGEMENT
-  // ======================================================
-  
-  /**
-   * Countdown and timer management
-   */
-  const TimerManager = {
-    /**
-     * Update countdown display
-     * @param {number} timeRemaining - Time remaining in milliseconds
-     */
-    updateCountdown(timeRemaining) {
-      if (!UI.countdownTimer || isNaN(timeRemaining) || timeRemaining <= 0) {
-        if (UI.countdownTimer) {
-          UI.countdownTimer.textContent = "0:00";
-        }
-        return;
-      }
-      
-      // Format time as MM:SS
-      const minutes = Math.floor(timeRemaining / 60000);
-      const seconds = Math.floor((timeRemaining % 60000) / 1000);
-      
-      UI.countdownTimer.style.display = "inline";
-      UI.countdownTimer.textContent = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-    },
-    
-    /**
-     * Start timer for current question
-     * @param {number} duration - Duration in milliseconds
-     * @param {string} correctAnswer - Correct answer text
-     */
-    startQuestionTimer(duration, correctAnswer) {
-      // Store current question timestamp to verify timer validity later
-      const currentQuestionTime = TriviaState.questionStartTime;
-      
-      setTimeout(() => {
-        // Check if we're still showing the same question
-        if (TriviaState.questionStartTime !== currentQuestionTime) {
-          console.log("⚠️ Question changed, not revealing answers");
-          return;
-        }
-        
-        console.log("⌛ Time's up! Revealing correct answer");
-        
-        // Reveal answer
-        QuestionManager.revealCorrectAnswer(correctAnswer);
-        
-        // Schedule transition back to countdown
-        setTimeout(() => {
-          const nextInterval = TriviaState.settings.intervalTime || 600000;
-          this.transitionToCountdown(nextInterval);
-        }, 5000);
-      }, duration);
-    },
-    
-    /**
-     * Transition to countdown screen
-     * @param {number} intervalTime - Interval time in milliseconds
-     */
-    transitionToCountdown(intervalTime) {
-      // Validate interval time with fallbacks
-      if (!intervalTime || isNaN(intervalTime)) {
-        intervalTime = TriviaState.settings.intervalTime || 600000;
-      }
-      
-      // Update state
-      TriviaState.triviaActive = true;
-      TriviaState.nextQuestionTime = Date.now() + intervalTime;
-      
-      // Update UI
-      UI.setUIState("countdown");
-      this.updateCountdown(intervalTime);
-    },
-    
-    /**
-     * Check if it's time to request the next question
-     */
-    checkForNextQuestion() {
-      // Skip if trivia isn't active or if PubSub updated countdown
-      if (!TriviaState.triviaActive || !TriviaState.nextQuestionTime || TriviaState.countdownUpdatedByPubSub) {
-        return;
-      }
-      
-      const timeRemaining = TriviaState.nextQuestionTime - Date.now();
-      
-      // Update local countdown
-      this.updateCountdown(timeRemaining);
-      
-      // Request next question when time is up
-      if (timeRemaining <= 0 && !TriviaState.questionRequested) {
-        console.log("⏳ Countdown reached 0! Requesting next question");
-        TriviaState.questionRequested = true;
-        
-        fetch(`${TriviaState.getApiBaseUrl()}/get-next-question`)
-          .then(response => response.json())
-          .then(data => {
-            if (data.error) {
-              console.warn(`⚠️ ${data.error}`);
-              // Reset request flag after delay to prevent spam
-              setTimeout(() => {
-                TriviaState.questionRequested = false;
-              }, 5000);
-              return;
-            }
-            
-            // Display question if valid
-            QuestionManager.displayQuestion(data);
-          })
-          .catch(error => {
-            console.error("❌ Error fetching next question:", error);
-            // Reset request flag after delay
-            setTimeout(() => {
-              TriviaState.questionRequested = false;
-            }, 5000);
-          });
-      }
-    }
-  };
+// ======================================================
+// 7. TIMER MANAGEMENT
+// ======================================================
 
+/**
+ * Countdown and timer management
+ */
+const TimerManager = {
   /**
-   * Handle countdown update message
-   * @param {Object} data - Countdown data with timeRemaining
+   * Update countdown display
+   * @param {number} timeRemaining - Time remaining in milliseconds
    */
-  function handleCountdownUpdate(data) {
-    console.log("⏱️ Received countdown update");
-    
-    if (!data.timeRemaining && data.timeRemaining !== 0) {
-      console.warn("⚠️ Missing timeRemaining in countdown update");
+  updateCountdown(timeRemaining) {
+    if (!UI.countdownTimer || isNaN(timeRemaining) || timeRemaining <= 0) {
+      if (UI.countdownTimer) {
+        UI.countdownTimer.textContent = "0:00";
+      }
       return;
     }
     
-    // Update countdown flag to prevent duplicate updates
-    TriviaState.countdownUpdatedByPubSub = true;
+    // Format time as MM:SS
+    const minutes = Math.floor(timeRemaining / 60000);
+    const seconds = Math.floor((timeRemaining % 60000) / 1000);
     
-    // Update nextQuestionTime based on the timeRemaining from server
-    TriviaState.nextQuestionTime = Date.now() + data.timeRemaining;
-    
-    // Update the UI with the new time
-    UI.setUIState("countdown");
-    TimerManager.updateCountdown(data.timeRemaining);
-    
-    // Reset flag after a short delay to allow local updates again
-    setTimeout(() => {
-      TriviaState.countdownUpdatedByPubSub = false;
-    }, 2000);
-  }
-
+    UI.countdownTimer.style.display = "inline";
+    UI.countdownTimer.textContent = `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+  },
+  
   /**
-   * Handle trivia end message
+   * Start timer for current question
+   * @param {number} duration - Duration in milliseconds
+   * @param {string} correctAnswer - Correct answer text
    */
-  function handleTriviaEnd() {
-    console.log("⛔ Trivia has ended");
-    TriviaState.triviaActive = false;
-    TriviaState.nextQuestionTime = null;
-    UI.setUIState("ended");
+  startQuestionTimer(duration, correctAnswer) {
+    // Store current question timestamp to verify timer validity later
+    const currentQuestionTime = TriviaState.questionStartTime;
+    
+    setTimeout(() => {
+      // Check if we're still showing the same question
+      if (TriviaState.questionStartTime !== currentQuestionTime) {
+        console.log("⚠️ Question changed, not revealing answers");
+        return;
+      }
+      
+      console.log("⌛ Time's up! Revealing correct answer");
+      
+      // Reveal answer
+      QuestionManager.revealCorrectAnswer(correctAnswer);
+      
+      // Schedule transition back to countdown
+      setTimeout(() => {
+        const nextInterval = TriviaState.settings.intervalTime || 600000;
+        this.transitionToCountdown(nextInterval);
+      }, 5000);
+    }, duration);
+  },
+  
+  /**
+   * Transition to countdown screen
+   * @param {number} intervalTime - Interval time in milliseconds
+   */
+  transitionToCountdown(intervalTime) {
+    // Validate interval time with fallbacks
+    if (!intervalTime || isNaN(intervalTime)) {
+      intervalTime = TriviaState.settings.intervalTime || 600000;
+    }
+    
+    // Update state
+    TriviaState.triviaActive = true;
+    TriviaState.nextQuestionTime = Date.now() + intervalTime;
+    
+    // Update UI
+    UI.setUIState("countdown");
+    this.updateCountdown(intervalTime);
+  },
+  
+  /**
+   * Check and update countdown display
+   * NOTE: This function has been modified to remove client-side question polling.
+   * Questions are now received exclusively through Twitch PubSub broadcasts.
+   */
+  checkForNextQuestion() {
+    // Skip if trivia isn't active or if countdown time isn't set
+    if (!TriviaState.triviaActive || !TriviaState.nextQuestionTime) {
+      return;
+    }
+    
+    const timeRemaining = TriviaState.nextQuestionTime - Date.now();
+    
+    // Update local countdown display
+    this.updateCountdown(timeRemaining);
+    
+    // When time is up, just log that we're waiting for server broadcast
+    if (timeRemaining <= 0 && !TriviaState.questionRequested) {
+      console.log("⏳ Countdown reached 0! Waiting for server to broadcast next question...");
+      // Set this flag to prevent multiple log messages
+      TriviaState.questionRequested = true;
+      
+      // Reset the flag after some time in case the broadcast is delayed
+      setTimeout(() => {
+        TriviaState.questionRequested = false;
+      }, 5000);
+    }
   }
+};
+
+/**
+ * Handle countdown update message
+ * @param {Object} data - Countdown data with timeRemaining
+ */
+function handleCountdownUpdate(data) {
+  console.log("⏱️ Received countdown update");
+  
+  if (!data.timeRemaining && data.timeRemaining !== 0) {
+    console.warn("⚠️ Missing timeRemaining in countdown update");
+    return;
+  }
+  
+  // Update countdown flag to prevent duplicate updates
+  TriviaState.countdownUpdatedByPubSub = true;
+  
+  // Update nextQuestionTime based on the timeRemaining from server
+  TriviaState.nextQuestionTime = Date.now() + data.timeRemaining;
+  
+  // Update the UI with the new time
+  UI.setUIState("countdown");
+  TimerManager.updateCountdown(data.timeRemaining);
+  
+  // Reset flag after a short delay to allow local updates again
+  setTimeout(() => {
+    TriviaState.countdownUpdatedByPubSub = false;
+  }, 2000);
+}
+
+/**
+ * Handle trivia end message
+ */
+function handleTriviaEnd() {
+  console.log("⛔ Trivia has ended");
+  TriviaState.triviaActive = false;
+  TriviaState.nextQuestionTime = null;
+  UI.setUIState("ended");
+}
   
   // ======================================================
   // 8. INITIALIZATION & EVENT LISTENERS

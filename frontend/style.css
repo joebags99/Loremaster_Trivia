@@ -1,233 +1,674 @@
-/* 🎨 Fantasy Font & Background */
+/* 🧙‍♂️ Loremaster Trivia - Modern Fantasy UI with Enhanced Responsiveness 🧙‍♂️ */
+
+/* Modern Font Stack with Fantasy Vibes */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Josefin+Sans:wght@300;400;600&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&display=swap');
 
-body {
-    font-family: 'Uncial Antiqua', cursive;
-    color: #f4e4ba;
-    text-align: center;
-    overflow: hidden;
+:root {
+  /* Color Palette - Modern Fantasy */
+  --primary: #6a3de8;         /* Magic purple */
+  --primary-light: #9b7aff;   /* Lighter magic */
+  --primary-dark: #45269e;    /* Darker magic */
+  --accent: #ffb938;          /* Gold accent */
+  --accent-glow: #ffcc00;     /* Glowing gold */
+  --background: #1a1228;      /* Deep night */
+  --surface: #271c37;         /* Surface bg */
+  --surface-light: #312544;   /* Lighter surface */
+  --text-light: #e9e0ff;      /* Light text */
+  --text-accent: #ffcc00;     /* Gold text */
+  --danger: #ff4757;          /* Danger red */
+  --success: #2ed573;         /* Success green */
+  --shadow-color: rgba(0, 0, 0, 0.5);  /* Shadow */
+  
+  /* Animation Speeds */
+  --transition-fast: 0.15s;
+  --transition-medium: 0.3s;
+  --transition-slow: 0.5s;
+  
+  /* Border Radius */
+  --radius-small: 8px;
+  --radius-medium: 12px;
+  --radius-large: 20px;
+  
+  /* Magic Glow Strength */
+  --glow-strength: 8px;
 }
 
-/* 🔧 Fix Twitch iframe transparency issues */
+/* Base Styles & Reset */
+*, *:before, *:after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 html, body {
-    background-color: rgba(34, 17, 0, 1) !important;
+  background-color: var(--background) !important;
+  color: var(--text-light);
+  font-family: 'Josefin Sans', sans-serif;
+  line-height: 1.5;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  font-size: 16px; /* Base font size */
+}
+
+/* Typography */
+h1, h2, h3, h4, .fantasy-title {
+  font-family: 'Cinzel', 'Uncial Antiqua', serif;
+  color: var(--text-accent);
+  text-shadow: 0 0 10px rgba(255, 204, 0, 0.3);
+  letter-spacing: 0.03em;
+  margin-bottom: 0.5em;
+}
+
+/* ⚡ Common Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes magicPulse {
+  0% { box-shadow: 0 0 5px var(--primary-light); }
+  50% { box-shadow: 0 0 15px var(--primary-light); }
+  100% { box-shadow: 0 0 5px var(--primary-light); }
+}
+
+@keyframes glowingText {
+  0% { text-shadow: 0 0 5px var(--accent-glow); }
+  50% { text-shadow: 0 0 12px var(--accent-glow), 0 0 20px var(--accent-glow); }
+  100% { text-shadow: 0 0 5px var(--accent-glow); }
+}
+
+@keyframes borderPulse {
+  0% { border-color: var(--primary-light); }
+  50% { border-color: var(--accent); }
+  100% { border-color: var(--primary-light); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 /* 📜 Waiting Screen (Before Trivia Starts) */
 #waiting-screen {
-    display: flex;
-    flex-direction: column; /* ✅ Ensures proper vertical centering */
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    text-align: center;
-    font-size: clamp(18px, 4vw, 32px);
-    color: #ffcc00;
-    text-shadow: 2px 2px 8px rgba(0, 0, 0, 1);
-    background: rgba(34, 17, 0, 0.9);
-    border-radius: 15px;
-    box-shadow: 0px 0px 15px rgba(255, 215, 0, 0.8);
-    padding: 20px;
+  display: flex;
+  flex-direction: column; 
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  text-align: center;
+  font-size: clamp(16px, 3vw, 24px);
+  background: linear-gradient(135deg, var(--background) 0%, var(--surface) 50%, var(--background) 100%);
+  border-radius: var(--radius-medium);
+  box-shadow: 0 0 var(--glow-strength) rgba(107, 66, 230, 0.3);
+  padding: clamp(15px, 4vw, 30px);
+  animation: fadeIn var(--transition-slow) ease-in-out;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+}
+
+#waiting-screen::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(circle at 20% 30%, rgba(106, 61, 232, 0.2) 0%, transparent 20%),
+    radial-gradient(circle at 80% 70%, rgba(106, 61, 232, 0.2) 0%, transparent 20%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+#waiting-screen h2, #waiting-screen h3 {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+#waiting-text {
+  font-family: 'Cinzel', 'Uncial Antiqua', serif;
+  color: var(--text-accent);
+  text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+  animation: glowingText 3s infinite ease-in-out;
+  margin-bottom: clamp(12px, 3vw, 24px);
+  max-width: 90%;
+  font-size: clamp(16px, 4vw, 28px);
 }
 
 /* ⏳ Countdown Timer */
 #countdown-timer {
-    font-size: clamp(20px, 4vw, 32px);
-    font-weight: bold;
-    color: #ffcc00;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 5px 12px;
-    border-radius: 6px;
-    box-shadow: 0px 0px 10px rgba(255, 204, 0, 0.6);
-    text-shadow: 2px 2px 5px black;
+  font-size: clamp(22px, 5vw, 38px);
+  font-weight: bold;
+  font-family: 'Cinzel', serif;
+  color: var(--accent);
+  background: linear-gradient(135deg, var(--surface-light) 0%, var(--surface) 100%);
+  padding: clamp(8px, 2vw, 12px) clamp(15px, 3vw, 24px);
+  border-radius: var(--radius-medium);
+  box-shadow: 0 0 20px rgba(255, 204, 0, 0.3), inset 0 0 8px rgba(0, 0, 0, 0.4);
+  margin: clamp(10px, 3vw, 20px) 0;
+  border: 2px solid var(--primary-light);
+  animation: borderPulse 4s infinite ease-in-out;
+  position: relative;
+  z-index: 2;
 }
 
-/* 📜 Main Quiz Container */
+/* User Score Display */
+#user-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(106, 61, 232, 0.2) 0%, rgba(69, 38, 158, 0.4) 100%);
+  padding: clamp(10px, 3vw, 15px) clamp(15px, 3vw, 25px);
+  border-radius: var(--radius-medium);
+  border: 1px solid var(--primary-light);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  margin-top: clamp(15px, 4vw, 30px);
+  position: relative;
+  z-index: 2;
+  min-width: clamp(180px, 70%, 250px);
+  max-width: 90%;
+}
+
+.total-score {
+  font-size: clamp(1rem, 3vw, 1.3rem);
+  color: var(--text-accent);
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.session-score {
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+  color: var(--primary-light);
+  border-top: 1px solid rgba(255, 204, 0, 0.2);
+  padding-top: 8px;
+  width: 100%;
+  text-align: center;
+}
+
+/* 📜 Main Quiz Container - Modern Parchment */
 #quiz-container {
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    max-width: 800px;
-    margin: auto;
-    padding: 20px;
-    border: 3px solid #c4a484;
-    background: rgba(34, 17, 0, 0.9);
-    border-radius: 15px;
-    box-shadow: 0px 0px 15px rgba(255, 215, 0, 0.8);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: clamp(280px, 95%, 800px);
+  margin: auto;
+  padding: clamp(10px, 3vw, 30px);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-light) 50%, var(--surface) 100%);
+  border-radius: var(--radius-medium);
+  border: 2px solid var(--primary-light);
+  box-shadow: 0 0 25px rgba(106, 61, 232, 0.3), inset 0 0 15px rgba(0, 0, 0, 0.3);
+  animation: fadeInScale var(--transition-medium) ease-out;
+  position: relative;
+  overflow: hidden;
+  max-height: 100vh;
+  overflow-y: auto;
 }
 
-/* 📜 Question Box - Responsive Text */
+#quiz-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at center, rgba(155, 122, 255, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* 📜 Question Box - Enhanced Mystical Scroll */
 #question-box {
-    background: linear-gradient(180deg, #542e10, #3b1f0d);
-    padding: 15px;
-    width: 100%;
-    border-radius: 12px;
-    border: 3px solid #c4a484;
-    box-shadow: 0px 0px 10px rgba(255, 204, 0, 0.6);
-    color: #ffcc00 !important;
-    text-shadow: 2px 2px 8px rgba(0, 0, 0, 1) !important;
-    font-size: clamp(16px, 4vw, 30px);
-    font-weight: bold;
-    margin-bottom: 15px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    white-space: normal; /* ✅ Ensures proper word wrapping */
-    max-width: 95%;
+  background: linear-gradient(180deg, var(--primary-dark) 0%, var(--background) 100%);
+  padding: clamp(10px, 3vw, 25px) clamp(12px, 3vw, 25px);
+  width: 100%;
+  border-radius: var(--radius-medium);
+  border: 2px solid var(--primary-light);
+  box-shadow: 0 0 20px rgba(106, 61, 232, 0.3);
+  color: var(--text-light);
+  margin-bottom: clamp(12px, 3vw, 25px);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-/* 🔍 Fix for Twitch text being too faint */
-h2, p, #question-text {
-    color: #ffcc00 !important;
-    text-shadow: 2px 2px 8px black !important;
-    font-size: clamp(14px, 3vw, 26px) !important;
-    font-weight: bold;
-    max-width: 90%;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
+#question-box::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
+}
+
+#question-text {
+  color: var(--text-light) !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5) !important;
+  font-size: clamp(14px, 3vw, 22px) !important;
+  font-weight: 600;
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+  width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+  text-align: center;
+}
+
+/* Difficulty indicator with modern styling */
+.difficulty-indicator {
+  display: inline-block;
+  padding: clamp(4px, 1.5vw, 6px) clamp(8px, 2vw, 14px);
+  border-radius: 20px;
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
+  font-weight: bold;
+  margin-bottom: clamp(8px, 2vw, 12px);
+  color: white;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 1;
+}
+
+.difficulty-indicator::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 20px;
+  background: inherit;
+  filter: blur(8px);
+  opacity: 0.5;
+  z-index: -1;
+}
+
+.difficulty-indicator.easy {
+  background: linear-gradient(90deg, #2ed573 0%, #7bed9f 100%);
+}
+
+.difficulty-indicator.medium {
+  background: linear-gradient(90deg, #ff9f43 0%, #ffbe76 100%);
+}
+
+.difficulty-indicator.hard {
+  background: linear-gradient(90deg, #ee5253 0%, #ff6b6b 100%);
 }
 
 /* ⏳ Timer Bar - Magical Energy */
-/* Note: The transition duration is set dynamically by JS using the broadcast duration */
 #timer-bar {
-    width: 100%;
-    height: 12px;
-    background: linear-gradient(90deg, #ffcc00, #ff6600);
-    box-shadow: 0px 0px 10px rgba(255, 153, 0, 0.8);
-    transition: width 30s linear;
-    border-radius: 5px;
-    margin-bottom: 15px;
+  width: 100%;
+  height: clamp(8px, 2vw, 14px);
+  background: linear-gradient(90deg, var(--primary-light), var(--accent));
+  box-shadow: 0 0 10px var(--primary-light), inset 0 0 4px rgba(0, 0, 0, 0.5);
+  border-radius: 10px;
+  margin-bottom: clamp(12px, 3vw, 20px);
+  position: relative;
+  overflow: hidden;
+}
+
+#timer-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%);
+  animation: shimmer 2s infinite linear;
+  background-size: 200% 100%;
 }
 
 /* 🔮 Answer Choices - Mystic Buttons */
 #choices-container {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 10px;
-    width: 100%;
-    margin-top: 15px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(6px, 1.5vw, 12px);
+  width: 100%;
+  margin-top: clamp(10px, 2vw, 15px);
 }
 
 .choice-button {
-    background: linear-gradient(180deg, #6b4226 0%, #3b1f0d 100%);
-    border: 3px solid #c4a484;
-    color: white !important;
-    text-shadow: 2px 2px 5px black;
-    font-family: 'Uncial Antiqua', cursive;
-    font-size: clamp(14px, 3vw, 22px);
-    padding: 12px 20px;
-    width: 45%;
-    cursor: pointer;
-    border-radius: 12px;
-    transition: all 0.3s ease-in-out;
-    box-shadow: 0px 0px 8px rgba(255, 204, 0, 0.7);
+  background: linear-gradient(135deg, var(--surface-light) 0%, var(--surface) 100%);
+  border: 2px solid var(--primary-light);
+  color: var(--text-light) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  font-family: 'Josefin Sans', sans-serif;
+  font-size: clamp(13px, 2.5vw, 18px);
+  padding: clamp(8px, 2vw, 15px) clamp(10px, 2vw, 20px);
+  width: calc(50% - clamp(4px, 1vw, 8px));
+  cursor: pointer;
+  border-radius: var(--radius-medium);
+  transition: all var(--transition-medium) cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+  min-height: clamp(40px, 10vw, 60px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.choice-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
+  pointer-events: none;
 }
 
 .choice-button:hover {
-    background: linear-gradient(180deg, #b67c33 0%, #8B4513 100%);
-    box-shadow: 0px 0px 15px rgba(255, 204, 0, 1);
-    transform: scale(1.05);
+  transform: translateY(-3px) scale(1.03);
+  border-color: var(--accent);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3), 0 0 15px var(--primary-light);
 }
 
-/* 🔵 Selected Answer Glow (Blue before timer ends) */
+.choice-button:active {
+  transform: translateY(2px) scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.1s ease;
+}
+
+/* 🔵 Selected Answer (Modern Glow) */
 .selected {
-    box-shadow: 0px 0px 15px rgba(0, 102, 255, 0.8);
-    border-color: #007bff;
-    background: linear-gradient(180deg, #0044cc, #002a80);
-    transition: background 0.3s ease-in-out;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  border-color: var(--primary-light);
+  box-shadow: 0 0 20px var(--primary), inset 0 0 10px rgba(255, 255, 255, 0.2);
+  color: white !important;
+  animation: magicPulse 2s infinite;
+}
+
+.selected::before {
+  opacity: 0.3;
 }
 
 /* ✅ Correct Answer Glow */
 .correct {
-    background: linear-gradient(180deg, #2f8f2f 0%, #1e5a1e 100%);
-    color: #ffffff;
-    border-color: #1e7e34;
-    box-shadow: 0px 0px 15px rgba(34, 255, 34, 0.8);
-    transition: background 0.5s ease-in-out;
+  background: linear-gradient(135deg, #1cad56 0%, #25d366 100%);
+  border-color: #28c76f;
+  color: white !important;
+  box-shadow: 0 0 20px rgba(46, 213, 115, 0.6);
+  transform: translateY(-3px);
+}
+
+.correct::after {
+  content: '✓';
+  position: absolute;
+  right: clamp(8px, 2vw, 15px);
+  font-size: 1.2em;
 }
 
 /* ❌ Incorrect Answer Glow */
 .wrong {
-    background: linear-gradient(180deg, #8b0000 0%, #400000 100%);
-    color: #ffffff;
-    border-color: #b30000;
-    box-shadow: 0px 0px 15px rgba(255, 34, 34, 0.8);
-    transition: background 0.5s ease-in-out;
+  background: linear-gradient(135deg, #d63031 0%, #e84118 100%);
+  border-color: #ee5253;
+  color: white !important;
+  box-shadow: 0 0 15px rgba(255, 71, 87, 0.5);
+  opacity: 0.85;
+}
+
+.wrong.selected {
+  opacity: 1;
+}
+
+.wrong.selected::after {
+  content: '✗';
+  position: absolute;
+  right: clamp(8px, 2vw, 15px);
+  font-size: 1.2em;
 }
 
 /* 🛑 Disabled Button Styling */
 .choice-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.7;
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
-/* Difficulty indicator styling */
-.difficulty-indicator {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    font-weight: bold;
-    margin-bottom: 8px;
-    color: white;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.difficulty-indicator.easy {
-    background-color: #4CAF50; /* Green */
-}
-
-.difficulty-indicator.medium {
-    background-color: #FF9800; /* Orange */
-}
-
-.difficulty-indicator.hard {
-    background-color: #F44336; /* Red */
-}
-
-/* Points info styling */
+/* Points info styling - Enhanced */
 .points-info {
-    margin-top: 15px;
-    font-weight: bold;
-    animation: fadeIn 0.5s ease-in-out;
+  margin-top: clamp(10px, 2vw, 15px);
+  font-weight: bold;
+  animation: fadeIn 0.5s ease-in-out;
+  background: linear-gradient(135deg, rgba(106, 61, 232, 0.1) 0%, rgba(255, 204, 0, 0.1) 100%);
+  padding: clamp(8px, 2vw, 15px);
+  border-radius: var(--radius-small);
+  border: 1px solid rgba(255, 204, 0, 0.3);
+  width: calc(100% - 20px);
+  text-align: center;
 }
 
 .points-info .points {
-    color: gold;
-    font-size: 1.2rem;
-    display: block;
-    text-shadow: 0 0 5px rgba(255, 215, 0, 0.7);
+  color: var(--accent);
+  font-size: clamp(1rem, 2.5vw, 1.3rem);
+  display: block;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+  animation: glowingText 2s infinite ease-in-out;
 }
 
 .points-info .time-bonus {
-    color: lightgreen;
+  color: #7bed9f;
+  font-size: clamp(0.8rem, 2vw, 1rem);
+  display: block;
+  margin-top: 5px;
+}
+
+/* Modern Trivia Ended Screen */
+#trivia-ended-screen {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  text-align: center;
+  background: linear-gradient(135deg, var(--background) 0%, var(--surface) 50%, var(--background) 100%);
+  border-radius: var(--radius-medium);
+  box-shadow: 0 0 var(--glow-strength) rgba(107, 66, 230, 0.3);
+  padding: clamp(15px, 4vw, 30px);
+  animation: fadeIn var(--transition-slow) ease-in-out;
+  width: 100%;
+}
+
+#trivia-ended-screen h2 {
+  font-size: clamp(20px, 4vw, 36px);
+  margin-bottom: clamp(10px, 3vw, 20px);
+  animation: glowingText 3s infinite ease-in-out;
+}
+
+#trivia-ended-screen p {
+  font-size: clamp(14px, 3vw, 20px);
+  color: var(--text-light);
+  max-width: 90%;
+  line-height: 1.6;
+}
+
+/* Identity Prompt Styling */
+#identity-prompt {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, var(--surface-light) 0%, var(--surface) 100%);
+  padding: clamp(12px, 3vw, 20px);
+  border-radius: var(--radius-medium);
+  border: 2px solid var(--primary-light);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  text-align: center;
+  max-width: 90%;
+  width: clamp(250px, 80%, 400px);
+  animation: fadeIn var(--transition-medium) ease-out;
+}
+
+#identity-prompt p {
+  margin-bottom: clamp(10px, 2vw, 15px);
+  color: var(--text-light);
+  font-size: clamp(14px, 2.5vw, 16px);
+}
+
+#share-identity-btn {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  border: none;
+  padding: clamp(8px, 2vw, 12px) clamp(12px, 3vw, 20px);
+  border-radius: var(--radius-small);
+  font-family: 'Josefin Sans', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-medium) ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  font-size: clamp(14px, 2.5vw, 16px);
+}
+
+#share-identity-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 7px 15px rgba(0, 0, 0, 0.4), 0 0 15px rgba(106, 61, 232, 0.4);
+}
+
+#share-identity-btn:active {
+  transform: translateY(1px);
+}
+
+/* Special Effects and Animations */
+.magical-sparkle {
+  position: absolute;
+  background: white;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  animation: sparkle 1.5s ease-in-out forwards;
+}
+
+@keyframes sparkle {
+  0% { transform: translate(0, 0) scale(0); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(var(--tx, 20px), var(--ty, -20px)) scale(1); opacity: 0; }
+}
+
+/* Tiny Devices (320px and below) */
+@media (max-width: 320px) {
+  #waiting-text {
+    font-size: clamp(14px, 5vw, 18px);
+  }
+  
+  #countdown-timer {
+    font-size: clamp(16px, 6vw, 22px);
+    padding: 6px 12px;
+  }
+  
+  .choice-button {
+    font-size: clamp(11px, 4vw, 14px);
+    padding: 6px 8px;
+    min-height: 36px;
+  }
+  
+  #question-text {
+    font-size: clamp(12px, 4vw, 16px) !important;
+  }
+  
+  .difficulty-indicator {
+    font-size: 0.6rem;
+    padding: 3px 8px;
+  }
+  
+  #timer-bar {
+    height: 6px;
+  }
+  
+  .points-info .points {
     font-size: 0.9rem;
-    display: block;
-    margin-top: 5px;
+  }
+  
+  .points-info .time-bonus {
+    font-size: 0.7rem;
+  }
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
+/* Extra small devices (phones, 320px to 480px) */
+@media (min-width: 321px) and (max-width: 480px) {
+  .choice-button {
+    width: 100%;  /* Full width on very small screens */
+    margin-bottom: 6px;
+  }
+  
+  #quiz-container {
+    padding: 12px;
+  }
+  
+  #question-box {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
 }
 
-/* ✅ Responsive Fix for Twitch iframe Scaling */
-@media (max-width: 600px) {
-    #quiz-container {
-        max-width: 90%;
-        padding: 15px;
-    }
-    .choice-button {
-        width: 100%;
-        font-size: clamp(12px, 3vw, 18px);
-    }
-    #question-box {
-        font-size: clamp(14px, 3vw, 22px);
-    }
+/* Small devices (large phones, 480px to 767px) */
+@media (min-width: 481px) and (max-width: 767px) {
+  .choice-button {
+    width: calc(50% - 8px);  /* Two columns with small gap */
+  }
+  
+  #quiz-container {
+    padding: 15px;
+  }
+  
+  #question-box {
+    padding: 15px;
+  }
+}
+
+/* Medium devices (tablets, 768px and up) */
+@media (min-width: 768px) {
+  .choice-button {
+    width: calc(50% - 10px);  /* Two columns with medium gap */
+  }
+  
+  #choices-container {
+    gap: 20px;
+  }
+}
+
+/* Fix for Twitch panels where height might be constrained */
+@media (max-height: 600px) {
+  #waiting-screen, #trivia-ended-screen {
+    height: auto;
+    min-height: 100%;
+    padding-top: 15px;
+    padding-bottom: 15px;
+  }
+  
+  #quiz-container {
+    max-height: 95vh;
+    overflow-y: auto;
+  }
 }

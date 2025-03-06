@@ -83,7 +83,6 @@ const TriviaState = {
  * @param {Object} auth - Authorization data from Twitch
  */
 function handleAuthorization(auth) {
-  console.log("✅ Extension authorized with token:", auth.token.substring(0, 10) + "...");
   TriviaState.userId = auth.userId;
   
   // Request identity sharing from the user
@@ -93,9 +92,7 @@ function handleAuthorization(auth) {
   const hasViewerData = window.Twitch.ext.viewer && 
                         window.Twitch.ext.viewer.id && 
                         window.Twitch.ext.viewer.id === auth.userId;
-                        
-  console.log(`👤 Viewer data available: ${hasViewerData}`);
-  
+                          
   // If we have direct access to the viewer's display name
   if (hasViewerData && window.Twitch.ext.viewer.displayName) {
     TriviaState.username = window.Twitch.ext.viewer.displayName;
@@ -105,7 +102,6 @@ function handleAuthorization(auth) {
     try {
       localStorage.setItem('twitchUsername', TriviaState.username);
       localStorage.setItem('twitchUserId', TriviaState.userId);
-      console.log("💾 Stored username in localStorage");
     } catch (e) {
       console.warn("⚠️ Could not store username in localStorage");
     }
@@ -115,7 +111,6 @@ function handleAuthorization(auth) {
   } 
   // Check if we have an identity link (opaqueId different from userId)
   else if (auth.userId !== auth.clientId && auth.channelId) {
-    console.log("🔗 User appears to have identity link - sending data to server for resolution");
     
     // Send auth data to server for possible API resolution
     fetch(`${TriviaState.getApiBaseUrl()}/extension-identity`, {
@@ -134,7 +129,6 @@ function handleAuthorization(auth) {
     .then(response => response.json())
     .then(data => {
       if (data.username) {
-        console.log(`👤 Server resolved username: ${data.username}`);
         TriviaState.username = data.username;
         
         // Store resolved username
@@ -156,12 +150,10 @@ function handleAuthorization(auth) {
       
       if (storedUsername && storedUserId === TriviaState.userId) {
         TriviaState.username = storedUsername;
-        console.log("👤 Restored username from localStorage:", TriviaState.username);
         
         // Send recovered username to server
         UserManager.sendUsername();
       } else {
-        console.log("⚠️ No username available from any source");
       }
     } catch (e) {
       // Ignore localStorage errors
@@ -181,7 +173,6 @@ function handleAuthorization(auth) {
   function handleBroadcastMessage(target, contentType, message) {
     try {
       const data = JSON.parse(message);
-      console.log("📢 Received broadcast:", data.type);
       
       switch (data.type) {
         case "SETTINGS_UPDATE":
@@ -221,7 +212,6 @@ function handleAuthorization(auth) {
    * @param {Object} data - Settings data
    */
   function handleSettingsUpdate(data) {
-    console.log("⚙️ Updating settings:", data);
     TriviaState.settings.answerTime = data.answerTime || TriviaState.settings.answerTime;
     TriviaState.settings.intervalTime = data.intervalTime || TriviaState.settings.intervalTime;
   }
@@ -231,7 +221,6 @@ function handleAuthorization(auth) {
    * @param {Object} data - Trivia start data
    */
   function handleTriviaStart(data) {
-    console.log("🚀 Trivia has started!");
     TriviaState.triviaActive = true;
     
     // Set next question time
@@ -248,7 +237,6 @@ function handleAuthorization(auth) {
  * @param {Object} data - Question data
  */
 function handleTriviaQuestion(data) {
-  console.log("🎯 Received trivia question");
   
   // Track the last question timestamp to detect duplicates
   if (!TriviaState.lastQuestionTimestamp) {
@@ -257,7 +245,6 @@ function handleTriviaQuestion(data) {
   
   // Check for duplicate question based on timestamp
   if (data.timestamp && data.timestamp <= TriviaState.lastQuestionTimestamp) {
-    console.warn(`⚠️ Detected duplicate question (timestamp: ${data.timestamp}). Ignoring.`);
     return;
   }
   
@@ -271,16 +258,6 @@ function handleTriviaQuestion(data) {
   QuestionManager.displayQuestion(data);
 }
   
-  /**
-   * Handle trivia end message
-   */
-  function handleTriviaEnd() {
-    console.log("⛔ Trivia has ended");
-    TriviaState.triviaActive = false;
-    TriviaState.nextQuestionTime = null;
-    UI.setUIState("ended");
-  }
-  
   // ======================================================
   // 4. UI MANAGEMENT
   // ======================================================
@@ -289,7 +266,6 @@ function handleTriviaQuestion(data) {
    * UI management methods
    */
   UI.setUIState = function(state) {
-    console.log(`🎭 Setting UI state to: ${state}`);
     
     // Hide all screens first
     this.waitingScreen.style.display = "none";
@@ -336,9 +312,7 @@ function handleTriviaQuestion(data) {
         console.warn("⚠️ Missing userId or username");
         return;
       }
-      
-      console.log(`👤 Sending username to server: ${TriviaState.username}`);
-      
+            
       // Store in localStorage as well for persistence
       try {
         localStorage.setItem('twitchUsername', TriviaState.username);
@@ -356,7 +330,6 @@ function handleTriviaQuestion(data) {
         })
       })
       .then(response => response.json())
-      .then(data => console.log("✅ Username sent successfully"))
       .catch(error => console.error("❌ Error sending username:", error));
     },
 
@@ -368,9 +341,7 @@ function handleTriviaQuestion(data) {
         console.warn("⚠️ Cannot fetch score: User ID is missing");
         return;
       }
-      
-      console.log(`📊 Fetching score for user: ${TriviaState.userId}`);
-      
+            
       fetch(`${TriviaState.getApiBaseUrl()}/score/${TriviaState.userId}`)
         .then(response => {
           if (!response.ok) {
@@ -379,7 +350,6 @@ function handleTriviaQuestion(data) {
           return response.json();
         })
         .then(data => {
-          console.log(`🏆 Retrieved user scores:`, data);
           this.displayScores(data.totalScore || 0, data.sessionScore || 0);
         })
         .catch(error => {
@@ -408,8 +378,6 @@ function handleTriviaQuestion(data) {
         <div class="total-score">Total Score: ${formattedTotal}</div>
         <div class="session-score">Session Score: ${formattedSession}</div>
       `;
-      
-      console.log(`🏆 Scores updated: Total=${formattedTotal}, Session=${formattedSession}`);
     },
     
     /**
@@ -437,9 +405,7 @@ function handleTriviaQuestion(data) {
         difficulty: TriviaState.currentQuestionDifficulty,
         duration: TriviaState.currentQuestionDuration
       };
-      
-      console.log("📤 Submitting answer:", answerData);
-      
+            
       // Send answer to server
       fetch(`${TriviaState.getApiBaseUrl()}/submit-answer`, {
         method: "POST",
@@ -453,7 +419,6 @@ function handleTriviaQuestion(data) {
         return response.json();
       })
       .then(data => {
-        console.log("🏆 Score updated:", data);
         
         // Update scores
         this.displayScores(data.totalScore || 0, data.sessionScore || 0);
@@ -637,12 +602,9 @@ function handleTriviaQuestion(data) {
       setTimeout(() => {
         // Check if we're still showing the same question
         if (TriviaState.questionStartTime !== currentQuestionTime) {
-          console.log("⚠️ Question changed, not revealing answers");
           return;
         }
-        
-        console.log("⌛ Time's up! Revealing correct answer");
-        
+                
         // Reveal answer
         QuestionManager.revealCorrectAnswer(correctAnswer);
         
@@ -689,7 +651,6 @@ function handleTriviaQuestion(data) {
       
       // Request next question when time is up
       if (timeRemaining <= 0 && !TriviaState.questionRequested) {
-        console.log("⏳ Countdown reached 0! Requesting next question");
         TriviaState.questionRequested = true;
         
         fetch(`${TriviaState.getApiBaseUrl()}/get-next-question`)
@@ -723,7 +684,6 @@ function handleTriviaQuestion(data) {
    * @param {Object} data - Countdown data with timeRemaining
    */
   function handleCountdownUpdate(data) {
-    console.log("⏱️ Received countdown update");
     
     if (!data.timeRemaining && data.timeRemaining !== 0) {
       console.warn("⚠️ Missing timeRemaining in countdown update");
@@ -750,7 +710,6 @@ function handleTriviaQuestion(data) {
    * Handle trivia end message
    */
   function handleTriviaEnd() {
-    console.log("⛔ Trivia has ended");
     TriviaState.triviaActive = false;
     TriviaState.nextQuestionTime = null;
     UI.setUIState("ended");
@@ -767,6 +726,5 @@ function handleTriviaQuestion(data) {
   
   // Initialize UI
   document.addEventListener("DOMContentLoaded", () => {
-    console.log("🚀 Initializing Loremaster Trivia Extension");
     initializeTwitchExtension();
   });

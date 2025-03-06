@@ -39,46 +39,6 @@ function validateEnvironment() {
   return true;
 }
 
-// Log environment for debugging
-function logEnvironment() {
-  console.log("========== ENVIRONMENT VARIABLES DEBUG ==========");
-  console.log(`PORT: ${process.env.PORT || "(using default 5000)"}`);
-  console.log(`DB_HOST: ${process.env.DB_HOST ? "DEFINED" : "UNDEFINED"}`);
-  console.log(`DB_USER: ${process.env.DB_USER ? "DEFINED" : "UNDEFINED"}`);
-  console.log(`DB_NAME: ${process.env.DB_NAME ? "DEFINED" : "UNDEFINED"}`);
-  console.log(`DB_PASSWORD: ${process.env.DB_PASSWORD ? "DEFINED (length: " + process.env.DB_PASSWORD?.length + ")" : "UNDEFINED"}`);
-  console.log(`EXT_CLIENT_ID: ${process.env.EXT_CLIENT_ID ? "DEFINED" : "UNDEFINED"}`);
-  console.log(`EXT_SECRET: ${process.env.EXT_SECRET ? "DEFINED" : "UNDEFINED"}`);
-  console.log(`CLIENT_SECRET: ${process.env.CLIENT_SECRET ? "DEFINED" : "UNDEFINED"}`);
-  console.log(`EXT_OWNER_ID: ${process.env.EXT_OWNER_ID ? "DEFINED" : "UNDEFINED"}`);
-  console.log("=================================================");
-}
-
-// Check environment validity
-if (!validateEnvironment()) {
-  process.exit(1);
-}
-
-// Log environment for debugging
-logEnvironment();
-
-// Check for missing database config and warn
-if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME || !process.env.DB_PASSWORD) {
-  console.error("❌ WARNING: Missing required database environment variables!");
-  console.error("Please check your .env file and make sure it's in the correct location:");
-  console.error(`Current .env path: ${__dirname + "/.env"}`);
-  console.error("Your .env file should contain: DB_HOST, DB_USER, DB_NAME, DB_PASSWORD");
-  
-  // List all .env files in the directory to help troubleshoot
-  try {
-    const files = fs.readdirSync(__dirname);
-    const envFiles = files.filter(file => file.includes('.env'));
-    console.error("Found these environment files:", envFiles);
-  } catch (err) {
-    console.error("Could not read directory to find .env files");
-  }
-}
-
 /**
  * Database Configuration
  */
@@ -166,30 +126,6 @@ const app = express();
 // Add proper body parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Add logging middleware for debugging
-app.use((req, res, next) => {
-  if (req.method === 'POST' && req.path === '/submit-answer') {
-    console.log(`📩 Received answer submission with content-type: ${req.headers['content-type']}`);
-    
-    // Check if body exists
-    if (!req.body || Object.keys(req.body).length === 0) {
-      console.warn('⚠️ Empty request body received on submit-answer');
-    }
-  }
-  next();
-});
-
-// Apply CORS to all routes
-app.use(cors(corsOptions));
-
-// Handle OPTIONS requests for CORS preflight
-app.options('*', cors(corsOptions));
-
-// Add specific options handler for the Twitch message endpoint
-app.options('/twitch/message', cors(corsOptions), (req, res) => {
-  res.status(204).send();
-});
 
 /**
  * Security Headers
@@ -476,51 +412,6 @@ const Score = sequelize.define("Score", {
     }
   }
   
-  /**
-   * Debug database structure and add missing columns if needed
-   */
-  async function debugDatabaseStructure() {
-    try {
-      console.log("🔍 Checking database structure...");
-      
-      // Check if the username column exists
-      const [results] = await sequelize.query(
-        "SHOW COLUMNS FROM user_scores LIKE 'username'"
-      );
-      
-      if (results.length === 0) {
-        console.log("⚠️ Username column doesn't exist in database. Adding it now...");
-        
-        // Add the username column if it doesn't exist
-        await sequelize.query(
-          "ALTER TABLE user_scores ADD COLUMN username VARCHAR(255)"
-        );
-        console.log("✅ Username column added to database");
-      } else {
-        console.log("✅ Username column exists in database");
-      }
-      
-      // Check for sample user data
-      const users = await Score.findAll({ limit: 5 });
-      console.log("📊 Sample user data:", users.map(u => ({
-        userId: u.userId,
-        username: u.username,
-        score: u.score
-      })));
-      
-      // Check memory username mapping
-      console.log("📊 Memory username mapping sample:", 
-        Object.keys(userIdToUsername).slice(0, 5).map(key => ({
-          userId: key, 
-          username: userIdToUsername[key]
-        }))
-      );
-      
-    } catch (error) {
-      console.error("❌ Error checking database structure:", error);
-    }
-  }
-  
   /********************************
    * SECTION 3: TWITCH API & AUTHENTICATION
    ********************************/
@@ -557,10 +448,6 @@ const Score = sequelize.define("Score", {
         console.error(`Client ID exists: ${!!EXT_CLIENT_ID}, Client Secret exists: ${!!CLIENT_SECRET}`);
         return null;
       }
-      
-      // Log truncated values for debugging
-      console.log(`🔍 Using Client ID: ${EXT_CLIENT_ID.substring(0, 5)}...`);
-      console.log(`🔍 Using Client Secret: ${CLIENT_SECRET ? CLIENT_SECRET.substring(0, 3) + '...' : 'MISSING'}`);
       
       // Create proper form data
       const formData = new URLSearchParams();
@@ -853,66 +740,6 @@ const Score = sequelize.define("Score", {
       
     } catch (error) {
       console.error('❌ Error in fetchUsernames:', error.message || error);
-    }
-  }
-  
-  /**
-   * Fix user IDs issue with Twitch API
-   * Repairs problematic IDs by removing 'U' prefix
-   */
-  async function repairUserIds() {
-    try {
-      console.log("🔧 Checking user IDs for potential issues...");
-      
-      // Get all unique user IDs from various sources
-      const scoreIds = Object.keys(usersScores);
-      const sessionIds = Object.keys(userSessionScores);
-      const allIds = [...new Set([...scoreIds, ...sessionIds])];
-      
-      // Check for problematic IDs (non-numeric)
-      const problematicIds = allIds.filter(id => !/^\d+$/.test(id));
-      
-      if (problematicIds.length > 0) {
-        console.warn(`⚠️ Found ${problematicIds.length} problematic (non-numeric) user IDs`);
-        console.warn(`Examples: ${problematicIds.slice(0, 5).join(', ')}${problematicIds.length > 5 ? '...' : ''}`);
-        
-        // For extension IDs that start with "U", try to repair by removing that prefix
-        let repairedCount = 0;
-        
-        problematicIds.forEach(id => {
-          // Common pattern in Twitch extensions: IDs that start with "U" followed by numbers
-          if (id.startsWith('U') && /^U\d+$/.test(id)) {
-            const numericId = id.substring(1); // Remove the 'U'
-            
-            // Transfer any scores or usernames to the numeric ID
-            if (usersScores[id] !== undefined) {
-              if (!usersScores[numericId]) usersScores[numericId] = 0;
-              usersScores[numericId] += usersScores[id];
-              delete usersScores[id];
-            }
-            
-            if (userSessionScores[id] !== undefined) {
-              if (!userSessionScores[numericId]) userSessionScores[numericId] = 0;
-              userSessionScores[numericId] += userSessionScores[id];
-              delete userSessionScores[id];
-            }
-            
-            if (userIdToUsername[id]) {
-              userIdToUsername[numericId] = userIdToUsername[id];
-              delete userIdToUsername[id];
-            }
-            
-            repairedCount++;
-          }
-        });
-        
-        console.log(`🔧 Repaired ${repairedCount} problematic IDs by removing 'U' prefix`);
-      } else {
-        console.log("✅ No problematic user IDs found");
-      }
-      
-    } catch (error) {
-      console.error("❌ Error in repairUserIds:", error);
     }
   }
   
@@ -2051,7 +1878,6 @@ app.post("/submit-answer", async (req, res) => {
       }
       
       // Set username in memory and database
-      console.log('SET USERNAME HERE DUUUUUDE:' + userId + ' ' + username);
       const success = await setUsername(userId, username);
       
       // Log username stats
@@ -2989,130 +2815,6 @@ app.post("/api/set-broadcaster-name", async (req, res) => {
     } catch (error) {
       console.error("❌ Error handling Twitch message:", error);
       res.status(500).json({ error: "Server error" });
-    }
-  });
-  
-  /**
-   * Debug Endpoints
-   */
-  
-  // Debug: Check user IDs
-  app.get("/debug/user-ids", (req, res) => {
-    try {
-      // Get all user IDs from the various stores
-      const scoreIds = Object.keys(usersScores);
-      const sessionIds = Object.keys(userSessionScores);
-      const usernameIds = Object.keys(userIdToUsername);
-      
-      // Find sample IDs
-      const allIds = [...new Set([...scoreIds, ...sessionIds, ...usernameIds])];
-      const sampleIds = allIds.slice(0, 10); // First 10 IDs
-      
-      // For each sample ID, show the format and any username
-      const samples = sampleIds.map(id => ({
-        id,
-        format: {
-          raw: id,
-          length: id.length,
-          isNumeric: /^\d+$/.test(id),
-          containsNonAlphaNum: /[^a-zA-Z0-9]/.test(id)
-        },
-        username: userIdToUsername[id] || null,
-        hasScore: id in usersScores,
-        sessionScore: userSessionScores[id] || 0
-      }));
-      
-      res.json({
-        counts: {
-          totalUniqueIds: allIds.length,
-          scoresCount: scoreIds.length,
-          sessionScoresCount: sessionIds.length,
-          usernamesCount: usernameIds.length
-        },
-        samples,
-        usernameSamples: Object.entries(userIdToUsername).slice(0, 10).map(([id, name]) => ({ id, name }))
-      });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-  
-  // Debug: Test Twitch API
-  app.get("/api/test-twitch-api", async (req, res) => {
-    try {
-      // Get a sample user ID from our database
-      const sampleUser = await Score.findOne();
-      const testUserId = sampleUser ? sampleUser.userId : null;
-      
-      if (!testUserId) {
-        return res.json({ 
-          success: false, 
-          message: "No user IDs available to test with" 
-        });
-      }
-      
-      console.log(`🧪 Testing Twitch API with user ID: ${testUserId}`);
-      
-      // Try to fetch username
-      const token = await getTwitchOAuthToken();
-      if (!token) {
-        return res.json({ 
-          success: false, 
-          message: "Could not obtain OAuth token" 
-        });
-      }
-      
-      // Use proper URL encoding for the ID
-      const queryParams = new URLSearchParams();
-      queryParams.append('id', testUserId);
-      
-      const response = await axios.get(
-        `https://api.twitch.tv/helix/users?${queryParams.toString()}`,
-        {
-          headers: {
-            'Client-ID': EXT_CLIENT_ID,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-      
-      // Return detailed test results
-      res.json({
-        success: true,
-        message: "Twitch API test completed",
-        testUserId: testUserId,
-        response: response.data,
-        usernameMappings: Object.keys(userIdToUsername).length
-      });
-    } catch (error) {
-      console.error("❌ Error testing Twitch API:", error.response?.data || error.message);
-      res.status(500).json({ 
-        success: false, 
-        error: error.message,
-        details: error.response?.data || {}
-      });
-    }
-  });
-  
-  // Debug: Set username manually
-  app.post("/debug/set-username", express.json(), async (req, res) => {
-    try {
-      const { userId, username } = req.body;
-      
-      if (!userId || !username) {
-        return res.status(400).json({ error: "Both userId and username are required" });
-      }
-      
-      // Set username
-      const success = await setUsername(userId, username);
-      
-      res.json({
-        success,
-        message: success ? `Username for ${userId} set to "${username}"` : "Failed to set username",
-        currentMappings: Object.keys(userIdToUsername).length
-      });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
     }
   });
   

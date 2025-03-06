@@ -253,7 +253,6 @@ const ApiService = {
       const url = `${CONFIG.API_BASE_URL()}${endpoint}`;
       
       try {
-        console.log(`🔍 API Request: ${options.method || 'GET'} ${url}`);
         const response = await fetch(url, options);
         
         if (!response.ok) {
@@ -291,12 +290,10 @@ const ApiService = {
     async getDifficulties() {
       return this.request('/api/difficulties')
         .then(data => {
-          console.log(`✅ Retrieved ${data.difficulties?.length || 0} difficulties`);
           TriviaState.setDifficulties(data.difficulties);
           return data.difficulties;
         })
         .catch(error => {
-          console.error("❌ Failed to load difficulties, using Twitch fallback", error);
           // Fallback to Twitch messaging
           TwitchService.sendMessage({type: 'GET_DIFFICULTIES'});
           return [];
@@ -318,9 +315,7 @@ const ApiService = {
             TriviaState
               .setSelectedCategories(data.settings.active_categories)
               .setSelectedDifficulties(data.settings.active_difficulties);
-            
-            console.log("✅ Loaded broadcaster settings from API");
-          }
+            }
           return data.settings;
         })
         .catch(error => {
@@ -340,7 +335,6 @@ const ApiService = {
         body: JSON.stringify(settings)
       })
       .then(data => {
-        console.log("✅ Settings saved successfully via API");
         TriviaState.updateSettings(settings);
         return data;
       })
@@ -371,7 +365,6 @@ const ApiService = {
         })
       })
       .then(data => {
-        console.log("✅ Filters saved successfully via API");
         if (data.questionCount) {
           TriviaState.setTotalQuestions(data.questionCount);
         }
@@ -404,7 +397,6 @@ const ApiService = {
       
       return this.request(`/api/sample-questions?${params.toString()}`)
         .then(data => {
-          console.log(`✅ Found ${data.totalMatching || 0} matching questions`);
           TriviaState.setTotalQuestions(data.totalMatching || 0);
           return data;
         })
@@ -431,7 +423,6 @@ const ApiService = {
     async getLeaderboard() {
       return this.request('/api/leaderboard')
         .then(data => {
-          console.log(`✅ Retrieved leaderboard data: ${data.total?.length || 0} total / ${data.session?.length || 0} session entries`);
           TriviaState.setLeaderboardData(data);
           return data;
         })
@@ -451,7 +442,6 @@ const ApiService = {
         body: JSON.stringify({ broadcasterId })
       })
       .then(data => {
-        console.log("✅ Trivia started via API:", data);
         TriviaState.setTriviaActive(true);
         return data;
       })
@@ -478,7 +468,6 @@ const ApiService = {
         body: JSON.stringify({ broadcasterId })
       })
       .then(data => {
-        console.log("✅ Trivia ended via API:", data);
         TriviaState.setTriviaActive(false);
         return data;
       })
@@ -512,7 +501,6 @@ const ApiService = {
      * Initialize all UI components
      */
     init() {
-      console.log("🎨 Initializing UI components");
       // Initial renderings will happen when data is available
     },
     
@@ -520,7 +508,6 @@ const ApiService = {
      * Category UI methods
      */
     renderCategories() {
-      console.log("🔍 Rendering categories");
       const container = document.getElementById(CONFIG.DOM_IDS.categoriesList);
       
       if (!container) {
@@ -574,7 +561,6 @@ const ApiService = {
      * Difficulty UI methods
      */
     renderDifficulties() {
-      console.log("🔍 Rendering difficulties");
       const container = document.getElementById(CONFIG.DOM_IDS.difficultiesList);
       
       if (!container) {
@@ -628,7 +614,6 @@ const ApiService = {
      * Question stats UI methods
      */
     updateQuestionStats() {
-      console.log("📊 Updating question stats display");
       const container = document.getElementById(CONFIG.DOM_IDS.questionStats);
       
       if (!container) {
@@ -691,7 +676,6 @@ const ApiService = {
      * Leaderboard UI methods
      */
     initializeLeaderboard() {
-      console.log("🏆 Initializing leaderboard");
       
       // Initial data fetch
       this.fetchLeaderboardData();
@@ -771,8 +755,7 @@ const ApiService = {
       });
       
       container.innerHTML = html;
-      console.log(`✅ Displayed ${scores.length} entries in leaderboard`);
-      
+
       // Update the active board buttons
       this.updateLeaderboardButtons();
     },
@@ -923,7 +906,6 @@ const EventHandlers = {
      * Main initialization function for all event handlers
      */
     init() {
-      console.log("🔄 Initializing event handlers");
       
       // Attach handlers to all UI controls
       this.attachAllEventListeners();
@@ -943,9 +925,7 @@ const EventHandlers = {
       this.attachButtonListener(CONFIG.DOM_IDS.showSessionScores, this.handleShowSessionScores);
       this.attachButtonListener(CONFIG.DOM_IDS.showTotalScores, this.handleShowTotalScores);
       this.attachButtonListener(CONFIG.DOM_IDS.refreshLeaderboard, this.handleRefreshLeaderboard);
-      
-      console.log("✅ All event listeners attached");
-    },
+        },
     
     /**
      * Helper to safely attach event listeners
@@ -957,7 +937,6 @@ const EventHandlers = {
       if (button) {
         // Bind 'this' to ensure the handler has access to EventHandlers methods
         button.addEventListener("click", handler.bind(this));
-        console.log(`✅ Attached event listener to #${buttonId}`);
       } else {
         console.error(`❌ Button #${buttonId} NOT found in DOM!`);
       }
@@ -967,7 +946,6 @@ const EventHandlers = {
      * Settings form handlers
      */
     handleSaveSettings(event) {
-      console.log("🔘 Save Settings button clicked");
       event.preventDefault();
       
       // Verify authentication
@@ -1003,7 +981,6 @@ const EventHandlers = {
       
       // Prepare settings object
       const settings = { answerTime, intervalTime };
-      console.log("📤 Saving settings:", settings);
       
       // Temporarily disable button to prevent multiple clicks
       const button = document.getElementById(CONFIG.DOM_IDS.saveSettings);
@@ -1013,7 +990,6 @@ const EventHandlers = {
       ApiService.saveSettings(settings)
         .then(data => {
           if (data.success) {
-            console.log("✅ Settings saved successfully");
             UI.showButtonSuccess(CONFIG.DOM_IDS.saveSettings, "Settings Saved!");
             
             // Update state and UI
@@ -1039,7 +1015,6 @@ const EventHandlers = {
      * Filter handlers
      */
     handleSaveFilters(event) {
-      console.log("💾 Save Filters button clicked");
       event.preventDefault();
       
       // Verify broadcaster ID
@@ -1052,7 +1027,6 @@ const EventHandlers = {
       
       // Get current filter state
       const filters = TriviaState.getFilterState();
-      console.log("📊 Saving filters:", filters);
       
       // Temporarily disable button to prevent multiple clicks
       const button = document.getElementById(CONFIG.DOM_IDS.saveFilters);
@@ -1062,7 +1036,6 @@ const EventHandlers = {
       ApiService.saveFilters(broadcasterId, filters)
         .then(data => {
           if (data.success || data.settings) {
-            console.log("✅ Filters saved successfully");
             UI.showButtonSuccess(CONFIG.DOM_IDS.saveFilters, "Filters Saved!");
             
             // Update question stats display if count is returned
@@ -1096,7 +1069,6 @@ const EventHandlers = {
      * Trivia control handlers
      */
     handleStartTrivia(event) {
-      console.log("▶️ Start Trivia button clicked");
       event.preventDefault();
       
       // Verify broadcaster ID
@@ -1122,7 +1094,6 @@ const EventHandlers = {
       ApiService.startTrivia(broadcasterId)
         .then(data => {
           if (data.success) {
-            console.log("✅ Trivia started successfully");
             UI.showButtonSuccess(CONFIG.DOM_IDS.startTrivia, "Trivia Started!");
           } else {
             console.error("❌ Error starting trivia:", data.error);
@@ -1143,7 +1114,6 @@ const EventHandlers = {
     },
     
     handleEndTrivia(event) {
-      console.log("⛔ End Trivia button clicked");
       event.preventDefault();
       
       // Verify broadcaster ID
@@ -1169,7 +1139,6 @@ const EventHandlers = {
       ApiService.endTrivia(broadcasterId)
         .then(data => {
           if (data.success) {
-            console.log("✅ Trivia ended successfully");
             UI.showButtonSuccess(CONFIG.DOM_IDS.endTrivia, "Trivia Ended!");
             
             // Refresh leaderboard to show final scores
@@ -1196,7 +1165,6 @@ const EventHandlers = {
      * Leaderboard control handlers
      */
     handleShowSessionScores(event) {
-      console.log("🏆 Show Session Scores clicked");
       event.preventDefault();
       
       // Update state
@@ -1207,7 +1175,6 @@ const EventHandlers = {
     },
     
     handleShowTotalScores(event) {
-      console.log("🏆 Show Total Scores clicked");
       event.preventDefault();
       
       // Update state
@@ -1218,7 +1185,6 @@ const EventHandlers = {
     },
     
     handleRefreshLeaderboard(event) {
-      console.log("🔄 Refresh Leaderboard clicked");
       event.preventDefault();
       
       // Refresh leaderboard data
@@ -1263,20 +1229,12 @@ const TwitchService = {
      * Initialize Twitch integration
      */
     init() {
-      console.log("🔄 Initializing Twitch integration");
       
       if (window.Twitch && window.Twitch.ext) {
-        console.log("✅ Twitch Extension SDK available");
         this.setupMessageListener();
         this.setupAuthorization();
       } else {
         console.error("❌ Twitch Extension SDK not found");
-        
-        // Only create a mock in development environments
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          console.warn("⚠️ Creating mock Twitch for development");
-          this.createMockForTesting();
-        }
       }
     },
     
@@ -1293,7 +1251,6 @@ const TwitchService = {
         // Check if we get the channel info
         window.Twitch.ext.onAuthorized((auth) => {
         if (auth.channelId) {
-            console.log(`🎙️ Extension running on channel ID: ${auth.channelId}`);
             
             // Store broadcaster ID for API calls
             TriviaState.data.broadcasterId = auth.channelId;
@@ -1301,7 +1258,6 @@ const TwitchService = {
             // Try to get broadcaster display name from Twitch SDK
             if (window.Twitch.ext.viewer && window.Twitch.ext.viewer.channelDisplayName) {
             const broadcasterName = window.Twitch.ext.viewer.channelDisplayName;
-            console.log(`🎙️ Channel display name: ${broadcasterName}`);
             
             // Store for API calls
             TriviaState.data.broadcasterName = broadcasterName;
@@ -1325,7 +1281,6 @@ const TwitchService = {
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.displayName) {
-                console.log(`🎙️ Resolved broadcaster name via API: ${data.displayName}`);
                 TriviaState.data.broadcasterName = data.displayName;
                 }
             })
@@ -1342,7 +1297,6 @@ const TwitchService = {
      */
     ,setupAuthorization() {
       window.Twitch.ext.onAuthorized((auth) => {
-        console.log("✅ Extension authorized:", auth);
         
         // Store auth data in state
         TriviaState.setAuthData(auth.channelId, auth.token);
@@ -1357,28 +1311,22 @@ const TwitchService = {
      */
     setupMessageListener() {
       window.Twitch.ext.listen("broadcast", (target, contentType, message) => {
-        console.log("📩 Received Twitch broadcast:", target, contentType);
         
         try {
           // Parse the message
           const data = JSON.parse(message);
-          console.log("📢 Parsed broadcast data:", data);
           
           // Process the message
           this.handleMessage(data);
         } catch (err) {
-          console.error("❌ Error parsing Twitch message:", err);
         }
       });
-      
-      console.log("✅ Twitch message listener set up");
     },
     
     /**
      * Initialize data loading after authentication
      */
     initializeAfterAuth() {
-      console.log("🔄 Loading initial data after Twitch auth");
       
       // Load categories from API or Twitch
       ApiService.getCategories()
@@ -1430,11 +1378,9 @@ const TwitchService = {
       switch (data.type) {
         // Settings messages
         case "COUNTDOWN_UPDATE":
-            console.log("⏱️ Received countdown update with time remaining:", data.timeRemaining);
 
             case "SETTINGS_UPDATE":
         case "UPDATE_SETTINGS":
-          console.log("⚙️ Received settings update:", data);
           
           // Update local settings state
           TriviaState.updateSettings({
@@ -1450,7 +1396,6 @@ const TwitchService = {
         // Trivia state messages
         case "TRIVIA_START":
         case "START_TRIVIA":
-          console.log("🚀 Received trivia start notification");
           TriviaState.setTriviaActive(true);
           UI.setUIForTriviaActive(true);
           EventHandlers.updateStatus("Trivia has started!");
@@ -1458,7 +1403,6 @@ const TwitchService = {
         
         case "TRIVIA_END":
         case "END_TRIVIA":
-          console.log("⛔ Received trivia end notification");
           TriviaState.setTriviaActive(false);
           UI.setUIForTriviaActive(false);
           EventHandlers.updateStatus("Trivia has ended!");
@@ -1469,25 +1413,21 @@ const TwitchService = {
         
         // Data responses
         case "CATEGORIES_RESPONSE":
-          console.log("📚 Received categories response:", data.categories);
           TriviaState.setCategories(data.categories);
           UI.renderCategories();
           break;
         
         case "DIFFICULTIES_RESPONSE":
-          console.log("🔄 Received difficulties response:", data.difficulties);
           TriviaState.setDifficulties(data.difficulties);
           UI.renderDifficulties();
           break;
         
         case "QUESTION_STATS_RESPONSE":
-          console.log("📊 Received question stats response:", data);
           TriviaState.setTotalQuestions(data.totalMatching || 0);
           UI.renderQuestionStats();
           break;
         
         case "FILTERS_SAVED":
-          console.log("💾 Received filter save confirmation:", data);
           EventHandlers.updateStatus(data.message || "Filters saved successfully!");
           
           // Update question count if available
@@ -1498,7 +1438,6 @@ const TwitchService = {
           break;
         
         case "BROADCASTER_SETTINGS_RESPONSE":
-          console.log("⚙️ Received broadcaster settings:", data.settings);
           
           if (data.settings) {
             // Update state with received settings
@@ -1531,7 +1470,6 @@ const TwitchService = {
       }
       
       try {
-        console.log("📤 Sending Twitch message:", message);
         window.Twitch.ext.send('broadcast', 'application/json', message);
         return true;
       } catch (error) {
@@ -1557,56 +1495,11 @@ const TwitchService = {
         });
         
         const data = await response.json();
-        console.log("📡 Server message endpoint response:", data);
         return data;
       } catch (error) {
         console.error("❌ Error using server message endpoint:", error);
         return { success: false, error: error.message };
       }
-    },
-    
-    /**
-     * Create mock Twitch for testing in development
-     * Simulates Twitch SDK for local development
-     */
-    createMockForTesting() {
-      console.warn("⚠️ Creating mock Twitch object for testing");
-      
-      // Create mock Twitch object
-      window.Twitch = {
-        ext: {
-          onAuthorized: (callback) => {
-            console.log("🔧 Mock Twitch auth triggered");
-            
-            // Simulate auth with test broadcaster ID
-            setTimeout(() => {
-              callback({
-                userId: "mock-user-123",
-                channelId: "70361469", // Test broadcaster ID
-                token: "mock-token-for-testing"
-              });
-            }, 500);
-          },
-          
-          listen: (type, callback) => {
-            console.log("🔧 Mock Twitch listen registered for:", type);
-            window.mockTwitchCallback = callback; // Store for simulated events
-          },
-          
-          send: (target, contentType, message) => {
-            console.log("🔧 Mock Twitch send:", { target, contentType, message });
-            
-            // Simulate responses based on message type
-            this.simulateMockResponse(message);
-          }
-        }
-      };
-      
-      // Re-initialize with mock
-      this.init();
-      
-      // Add some debug controls for mock
-      this.addMockTwitchControls();
     },
     
     /**
@@ -1735,49 +1628,7 @@ const TwitchService = {
      * Add mock Twitch debug controls
      * Only used in development environment
      */
-    addMockTwitchControls() {
-      // Only add if we're in development
-      if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        return;
-      }
-      
-      // Create a floating debug panel
-      const debugPanel = document.createElement('div');
-      debugPanel.style.position = 'fixed';
-      debugPanel.style.bottom = '10px';
-      debugPanel.style.right = '10px';
-      debugPanel.style.padding = '10px';
-      debugPanel.style.background = 'rgba(0,0,0,0.8)';
-      debugPanel.style.color = '#fff';
-      debugPanel.style.borderRadius = '5px';
-      debugPanel.style.zIndex = '9999';
-      debugPanel.style.fontSize = '12px';
-      debugPanel.innerHTML = `
-        <div style="margin-bottom:8px"><strong>Mock Twitch Controls</strong></div>
-        <button id="mock-trivia-start" style="margin:2px;padding:5px">Simulate Trivia Start</button>
-        <button id="mock-trivia-end" style="margin:2px;padding:5px">Simulate Trivia End</button>
-      `;
-      
-      document.body.appendChild(debugPanel);
-      
-      // Add event listeners
-      document.getElementById('mock-trivia-start').addEventListener('click', () => {
-        if (window.mockTwitchCallback) {
-          window.mockTwitchCallback('broadcast', 'application/json',
-            JSON.stringify({ type: 'TRIVIA_START' })
-          );
-        }
-      });
-      
-      document.getElementById('mock-trivia-end').addEventListener('click', () => {
-        if (window.mockTwitchCallback) {
-          window.mockTwitchCallback('broadcast', 'application/json',
-            JSON.stringify({ type: 'TRIVIA_END' })
-          );
-        }
-      });
-    }
-  };
+      };
 
 /**
  * ====================================
@@ -1889,51 +1740,6 @@ const Utils = {
     },
     
     /**
-     * Log a message only in development environments
-     * @param {string} message - Message to log
-     * @param {any} data - Optional data to log
-     */
-    devLog(message, data) {
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        if (data !== undefined) {
-          console.log(`🔧 DEV: ${message}`, data);
-        } else {
-          console.log(`🔧 DEV: ${message}`);
-        }
-      }
-    },
-    
-    /**
-     * Set up console logging with timestamps
-     * Useful for debugging to see when things happen
-     */
-    setupTimestampedLogs() {
-      // Store the original console methods
-      const originalLog = console.log;
-      const originalWarn = console.warn;
-      const originalError = console.error;
-      
-      // Add timestamps to log messages
-      console.log = function() {
-        const args = Array.from(arguments);
-        const timestamp = new Date().toISOString().substr(11, 8); // HH:MM:SS
-        originalLog.apply(console, [`[${timestamp}]`, ...args]);
-      };
-      
-      console.warn = function() {
-        const args = Array.from(arguments);
-        const timestamp = new Date().toISOString().substr(11, 8); // HH:MM:SS
-        originalWarn.apply(console, [`[${timestamp}]`, ...args]);
-      };
-      
-      console.error = function() {
-        const args = Array.from(arguments);
-        const timestamp = new Date().toISOString().substr(11, 8); // HH:MM:SS
-        originalError.apply(console, [`[${timestamp}]`, ...args]);
-      };
-    },
-    
-    /**
      * Check if we're running in production environment
      * @returns {boolean} True if in production
      */
@@ -2007,37 +1813,25 @@ const Utils = {
    * Loads all components in the correct order
    */
   function initializeApplication() {
-    console.log("🚀 Starting application initialization");
     
     // Enable timestamp logging in development
     if (!Utils.isProduction()) {
       Utils.setupTimestampedLogs();
-      console.log("🔧 Development mode with timestamped logs enabled");
     }
     
     try {
       // Initialize state (load any saved state from localStorage)
       TriviaState.loadFromLocalStorage();
-      console.log("✅ State initialized");
       
       // Initialize Twitch integration
       TwitchService.init();
-      console.log("✅ Twitch integration initialized");
       
       // Initialize UI components
       UI.init();
-      console.log("✅ UI components initialized");
       
       // Initialize event handlers
       EventHandlers.init();
-      console.log("✅ Event handlers initialized");
       
-      // Add special development tools if in local environment
-      if (!Utils.isProduction()) {
-        addDevelopmentTools();
-      }
-      
-      console.log("🎉 Application initialization complete");
     } catch (error) {
       console.error("❌ Failed to initialize application:", error);
       
@@ -2057,7 +1851,6 @@ const Utils = {
    * Attempt to recover from initialization errors
    */
   function attemptRecovery() {
-    console.log("🔄 Attempting error recovery");
     
     try {
       // At minimum, try to set up basic UI
@@ -2087,50 +1880,10 @@ const Utils = {
         });
       }
       
-      console.log("✅ Basic recovery complete");
     } catch (recoveryError) {
       console.error("❌ Recovery failed:", recoveryError);
     }
-  }
-  
-  /**
-   * Add development-specific tools and helpers
-   * Only used in local development environment
-   */
-  function addDevelopmentTools() {
-    console.log("🛠️ Adding development tools");
-    
-    // Add a dev helper menu
-    const devTools = document.createElement('div');
-    devTools.id = 'dev-tools';
-    devTools.style.position = 'fixed';
-    devTools.style.left = '10px';
-    devTools.style.bottom = '10px';
-    devTools.style.padding = '10px';
-    devTools.style.background = 'rgba(0,0,0,0.8)';
-    devTools.style.color = '#fff';
-    devTools.style.borderRadius = '5px';
-    devTools.style.zIndex = '9999';
-    devTools.style.fontSize = '12px';
-    devTools.innerHTML = `
-      <div style="margin-bottom:8px"><strong>Dev Tools</strong></div>
-      <button id="dev-reset-state" style="margin:2px;padding:5px">Reset State</button>
-      <button id="dev-log-state" style="margin:2px;padding:5px">Log State</button>
-    `;
-    
-    document.body.appendChild(devTools);
-    
-    // Add event handlers
-    document.getElementById('dev-reset-state').addEventListener('click', () => {
-      TriviaState.clearSavedState();
-      console.log("🧹 State cleared. Reloading...");
-      setTimeout(() => window.location.reload(), 500);
-    });
-    
-    document.getElementById('dev-log-state').addEventListener('click', () => {
-      console.log("📊 Current state:", TriviaState.data);
-    });
-  }
+  };
   
   // Initialize the application when the DOM is ready
   document.addEventListener("DOMContentLoaded", initializeApplication);

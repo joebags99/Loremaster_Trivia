@@ -63,7 +63,7 @@ const TriviaState = {
   };
 
   /**
- * Fix timer bar animation with guaranteed reflow and multiple animation techniques
+ * Fix timer bar animation with direct JavaScript animation for reliability
  * @param {number} duration - Duration in milliseconds
  */
 function fixTimerBarAnimation(duration) {
@@ -73,22 +73,58 @@ function fixTimerBarAnimation(duration) {
     return;
   }
   
-  console.log('Fixing timer animation with duration:', duration);
+  console.log('Applying JS-based timer animation with duration:', duration/1000, 'seconds');
   
-  // Remove any existing animation/transition classes and reset
-  timerBar.className = ''; // Clear all classes
+  // Reset any existing animations or transitions
   timerBar.style.animation = 'none';
   timerBar.style.transition = 'none';
+  timerBar.className = ''; // Clear all classes
   timerBar.style.width = '100%';
   
-  // Force a reflow
+  // Force reflow
   void timerBar.offsetWidth;
   
-  // Add the animation class with specific duration
-  timerBar.style.animationDuration = `${duration/1000}s`;
-  timerBar.classList.add('timer-running');
+  // Clear any existing animation timers
+  if (window.timerAnimationInterval) {
+    clearInterval(window.timerAnimationInterval);
+  }
   
-  console.log('Timer animation applied with class-based approach');
+  // Get the start time
+  const startTime = Date.now();
+  const endTime = startTime + duration;
+  
+  // Use requestAnimationFrame for smooth animation
+  function animateTimer() {
+    const now = Date.now();
+    const timeLeft = Math.max(0, endTime - now);
+    const percentLeft = (timeLeft / duration) * 100;
+    
+    // Set the width directly
+    timerBar.style.width = percentLeft + '%';
+    
+    // Add debug info periodically
+    if (Math.random() < 0.05) { // Log occasionally to avoid console spam
+      console.log(`Timer: ${Math.round(percentLeft)}% remaining`);
+    }
+    
+    // Continue animation until complete
+    if (timeLeft > 0) {
+      window.timerAnimationId = requestAnimationFrame(animateTimer);
+    } else {
+      timerBar.style.width = '0%';
+    }
+  }
+  
+  // Start the animation
+  window.timerAnimationId = requestAnimationFrame(animateTimer);
+  
+  // Fallback to ensure animation completes
+  setTimeout(() => {
+    timerBar.style.width = '0%';
+    if (window.timerAnimationId) {
+      cancelAnimationFrame(window.timerAnimationId);
+    }
+  }, duration + 100); // Add 100ms buffer
 }
   
   // ======================================================

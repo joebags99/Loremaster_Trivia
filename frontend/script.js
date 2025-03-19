@@ -1142,33 +1142,34 @@ const TimerManager = {
       alertOverlay.innerHTML = `
         <div class="alert-content">
           <div class="alert-icon">⏰</div>
-          <div class="alert-text">Get Ready!</div>
-          <div class="alert-subtext">Question starting in 60 seconds</div>
+          <div class="alert-text">Question Starting Soon!</div>
+          <div class="alert-subtext">Get ready - 60 seconds remaining</div>
         </div>
       `;
       document.body.appendChild(alertOverlay);
     } else {
-      // If it exists, make sure it's not in exit state
+      // Reset any existing classes
       alertOverlay.classList.remove('exit');
       alertOverlay.style.display = '';
     }
     
-    // Show and animate the overlay
-    alertOverlay.classList.add('visible');
-    
-    // Hide overlay after 5 seconds
+    // Show the overlay
     setTimeout(() => {
-      // Only hide if trivia is still active
-      if (TriviaState.triviaActive) {
+      alertOverlay.classList.add('visible');
+    }, 10);
+    
+    // Hide overlay after 4 seconds
+    setTimeout(() => {
+      if (alertOverlay.classList.contains('visible')) {
         alertOverlay.classList.remove('visible');
         alertOverlay.classList.add('exit');
         
-        // Clean up after animation
+        // Clean up after animation completes
         setTimeout(() => {
           alertOverlay.classList.remove('exit');
-        }, 700);
+        }, 500);
       }
-    }, 5000);
+    }, 4000);
   }
 };
 

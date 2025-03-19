@@ -63,30 +63,70 @@ const TriviaState = {
   };
 
   /**
- * Fix timer bar animation with proper reflow
+ * Fix timer bar animation with guaranteed reflow and multiple animation techniques
  * @param {number} duration - Duration in milliseconds
  */
 function fixTimerBarAnimation(duration) {
   const timerBar = document.getElementById('timer-bar');
-  if (!timerBar) return;
+  if (!timerBar) {
+    console.error("Timer bar element not found");
+    return;
+  }
   
   console.log('Fixing timer animation with duration:', duration);
   
-  // Reset timer bar
+  // Clear any existing transitions or animations
   timerBar.style.transition = 'none';
+  timerBar.style.animation = 'none';
   timerBar.style.width = '100%';
   
-  // Force a reflow to ensure the style change takes effect
+  // Force multiple reflows to ensure style changes take effect
   void timerBar.offsetWidth;
+  void timerBar.getBoundingClientRect();
   
-  // Enhanced approach: use requestAnimationFrame for better timing
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      timerBar.style.transition = `width ${duration/1000}s linear`;
-      timerBar.style.width = '0%';
-      console.log('Timer animation started');
-    });
-  });
+  // For debugging - log the current computed width
+  const computedStyle = window.getComputedStyle(timerBar);
+  console.log('Timer bar width before animation:', computedStyle.width);
+  
+  // Try multiple animation techniques
+  
+  // 1. CSS Transition
+  setTimeout(() => {
+    timerBar.style.transition = `width ${duration/1000}s linear`;
+    timerBar.style.width = '0%';
+    console.log('Timer animation started via transition');
+  }, 20);
+  
+  // 2. CSS Animation as fallback
+  setTimeout(() => {
+    // Check if width hasn't changed, suggesting transition failed
+    const newWidth = parseFloat(window.getComputedStyle(timerBar).width);
+    const originalWidth = parseFloat(computedStyle.width);
+    
+    if (Math.abs(newWidth - originalWidth) < 5) { // If barely changed
+      console.log('Transition may have failed, applying animation fallback');
+      
+      // Create and apply keyframe animation
+      const styleId = 'timer-animation-style';
+      let styleEl = document.getElementById(styleId);
+      
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        document.head.appendChild(styleEl);
+      }
+      
+      styleEl.textContent = `
+        @keyframes timerShrink {
+          from { width: 100%; }
+          to { width: 0%; }
+        }
+      `;
+      
+      timerBar.style.transition = 'none';
+      timerBar.style.animation = `timerShrink ${duration/1000}s linear forwards`;
+    }
+  }, 100);
 }
   
   // ======================================================
@@ -948,24 +988,6 @@ function improveTimerAnimation() {
         console.error("❌ Missing required question data:", data);
         TriviaState.questionRequested = false;
         return;
-      }
-
-      function fixTimerBarAnimation(duration) {
-        const timerBar = document.getElementById('timer-bar');
-        if (!timerBar) return;
-        
-        // Reset timer bar
-        timerBar.style.transition = 'none';
-        timerBar.style.width = '100%';
-        
-        // Force a reflow to ensure the style change takes effect
-        void timerBar.offsetWidth;
-        
-        // Start the animation after a small delay
-        setTimeout(() => {
-          timerBar.style.transition = `width ${duration/1000}s linear`;
-          timerBar.style.width = '0%';
-        }, 50);
       }
       
       // Calculate duration with fallback

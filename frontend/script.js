@@ -61,6 +61,28 @@ const TriviaState = {
     waitingText: document.getElementById("waiting-text"),
     userScore: document.getElementById("user-score")
   };
+
+  /**
+ * Fix timer bar animation with proper reflow
+ * @param {number} duration - Duration in milliseconds
+ */
+function fixTimerBarAnimation(duration) {
+  const timerBar = document.getElementById('timer-bar');
+  if (!timerBar) return;
+  
+  // Reset timer bar
+  timerBar.style.transition = 'none';
+  timerBar.style.width = '100%';
+  
+  // Force a reflow to ensure the style change takes effect
+  void timerBar.offsetWidth;
+  
+  // Start the animation after a small delay
+  setTimeout(() => {
+    timerBar.style.transition = `width ${duration/1000}s linear`;
+    timerBar.style.width = '0%';
+  }, 50);
+}
   
   // ======================================================
   // 2. TWITCH EXTENSION INTEGRATION
@@ -1176,7 +1198,7 @@ const TimerManager = {
         <div class="alert-content">
           <div class="alert-icon">⏰</div>
           <div class="alert-text">Question Starting Soon!</div>
-          <div class="alert-subtext">Get ready - 60 seconds remaining</div>
+          <div class="alert-subtext">Get ready - 30 seconds remaining</div>
         </div>
       `;
       document.body.appendChild(alertOverlay);
@@ -1250,16 +1272,17 @@ function updateAppVisibility(timeRemaining) {
       appContainer.classList.add('visible');
       
       // If this is the countdown warning and we haven't shown the alert yet
+      // UPDATED: Changed 15000 to 30000 to show alert at 30 seconds
       if (showDuringCountdown && !TriviaState.countdownAlertShown && 
-          timeRemaining <= 15000 && timeRemaining > 10000) {
-        // Update countdown alert text for 15 seconds
+          timeRemaining <= 30000 && timeRemaining > 25000) {
+        // Show countdown alert
         if (TimerManager.showCountdownAlert) {
-          // Customize alert for 15 seconds
+          // Customize alert for 30 seconds
           const alertOverlay = document.getElementById('countdown-alert');
           if (alertOverlay) {
             const alertSubtext = alertOverlay.querySelector('.alert-subtext');
             if (alertSubtext) {
-              alertSubtext.textContent = 'Get ready - 15 seconds remaining';
+              alertSubtext.textContent = 'Get ready - 30 seconds remaining';
             }
           }
           TimerManager.showCountdownAlert();

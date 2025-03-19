@@ -21,6 +21,7 @@ const TriviaState = {
     countdownUpdatedByPubSub: false,  // Flag to track PubSub countdown updates
     currentQuestionDifficulty: null,  // Current question difficulty level
     currentQuestionDuration: null,    // Current question duration
+    countdownAlertShown: false,       // Flag to track if 60-second alert was shown
     
     // Default settings
     settings: {
@@ -294,6 +295,25 @@ function handleTriviaQuestion(data) {
 function handleTriviaEnd() {
   TriviaState.triviaActive = false;
   TriviaState.nextQuestionTime = null;
+  
+  // Check if countdown alert is visible and animate it out
+  const countdownAlert = document.getElementById('countdown-alert');
+  if (countdownAlert && countdownAlert.classList.contains('visible')) {
+    // Apply exit animation
+    countdownAlert.classList.remove('visible');
+    countdownAlert.classList.add('exit');
+    
+    // Remove the element after animation completes
+    setTimeout(() => {
+      countdownAlert.classList.remove('exit');
+      countdownAlert.style.display = 'none';
+    }, 700); // Match animation duration
+  }
+  
+  // Reset the flag to allow future alerts
+  TriviaState.countdownAlertShown = false;
+  
+  // Change UI state to ended
   UI.setUIState("ended");
 }
   
@@ -1076,6 +1096,9 @@ const TimerManager = {
     TriviaState.triviaActive = true;
     TriviaState.nextQuestionTime = Date.now() + intervalTime;
     
+    // Reset countdown alert flag when transitioning to a new countdown
+    TriviaState.countdownAlertShown = false;
+    
     // Update UI
     UI.setUIState("countdown");
     this.updateCountdown(intervalTime);
@@ -1107,6 +1130,45 @@ const TimerManager = {
         TriviaState.questionRequested = false;
       }, 5000);
     }
+  },
+
+  showCountdownAlert() {
+    // Create overlay element if it doesn't exist
+    let alertOverlay = document.getElementById('countdown-alert');
+    if (!alertOverlay) {
+      alertOverlay = document.createElement('div');
+      alertOverlay.id = 'countdown-alert';
+      alertOverlay.className = 'countdown-alert';
+      alertOverlay.innerHTML = `
+        <div class="alert-content">
+          <div class="alert-icon">⏰</div>
+          <div class="alert-text">Get Ready!</div>
+          <div class="alert-subtext">Question starting in 60 seconds</div>
+        </div>
+      `;
+      document.body.appendChild(alertOverlay);
+    } else {
+      // If it exists, make sure it's not in exit state
+      alertOverlay.classList.remove('exit');
+      alertOverlay.style.display = '';
+    }
+    
+    // Show and animate the overlay
+    alertOverlay.classList.add('visible');
+    
+    // Hide overlay after 5 seconds
+    setTimeout(() => {
+      // Only hide if trivia is still active
+      if (TriviaState.triviaActive) {
+        alertOverlay.classList.remove('visible');
+        alertOverlay.classList.add('exit');
+        
+        // Clean up after animation
+        setTimeout(() => {
+          alertOverlay.classList.remove('exit');
+        }, 700);
+      }
+    }, 5000);
   }
 };
 

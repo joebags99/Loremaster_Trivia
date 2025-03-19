@@ -280,6 +280,7 @@ startServer().catch(err => {
 const userIdToUsername = {};
 const usersScores = {};
 const userSessionScores = {};
+let lastUserSessionScores = {};
 let triviaActive = false;
 let triviaRoundEndTime = 0;
 let nextQuestionTime = null;
@@ -1357,6 +1358,9 @@ async function setUsername(userId, username) {
   function resetSessionScores() {
     console.log("🔄 Resetting all session scores");
     
+    // Store current scores as last session scores before resetting
+    lastUserSessionScores = {...userSessionScores};
+    
     // Clear all session scores
     Object.keys(userSessionScores).forEach(key => {
       userSessionScores[key] = 0;
@@ -1976,13 +1980,12 @@ app.post("/submit-answer", async (req, res) => {
    * Leaderboard Endpoints
    */
   
-// Get leaderboard data
 app.get("/api/leaderboard", async (req, res) => {
   try {
     // Get top scores from database
     const dbScores = await Score.findAll({
-      order: [['score', 'DESC']],
-      limit: 20
+      order: [['score', 'DESC']]
+      // Remove the limit here to show all scores
     });
     
     // Create total leaderboard directly using database usernames
@@ -1992,8 +1995,15 @@ app.get("/api/leaderboard", async (req, res) => {
       score: entry.score
     }));
     
+    // Check if current session has any non-zero scores
+    const hasActiveSessionScores = Object.values(userSessionScores).some(score => score > 0);
+    
+    // Use scores source based on whether there are active scores
+    const sessionScoreSource = hasActiveSessionScores ? userSessionScores : lastUserSessionScores;
+    
     // Create session leaderboard with usernames from database if available
-    const sessionScores = Object.entries(userSessionScores)
+    const sessionScores = Object.entries(sessionScoreSource)
+      .filter(([userId, score]) => score > 0) // Only include non-zero scores
       .map(([userId, score]) => {
         // Try to find this user in the database scores to get username
         const dbUser = dbScores.find(entry => entry.userId === userId);
@@ -2003,8 +2013,7 @@ app.get("/api/leaderboard", async (req, res) => {
           score
         };
       })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 20);
+      .sort((a, b) => b.score - a.score);
     
     // Log samples of what we're returning
     if (totalLeaderboard.length > 0) {
@@ -2017,7 +2026,8 @@ app.get("/api/leaderboard", async (req, res) => {
     
     res.json({
       total: totalLeaderboard,
-      session: sessionScores
+      session: sessionScores,
+      isLastSession: !hasActiveSessionScores && sessionScores.length > 0
     });
   } catch (error) {
     console.error("❌ Error fetching leaderboard:", error);

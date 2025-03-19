@@ -910,6 +910,7 @@ const ApiService = {
       // Get the appropriate data based on current view
       const currentView = TriviaState.data.currentView;
       const scores = TriviaState.data.leaderboardData[currentView] || [];
+      const isLastSession = TriviaState.data.leaderboardData.isLastSession;
       
       // Handle empty state
       if (!scores || scores.length === 0) {
@@ -919,6 +920,19 @@ const ApiService = {
           </tr>
         `;
         return;
+      }
+      
+      // Optionally add "last session" indicator at the top
+      if (isLastSession && currentView === 'session') {
+        container.innerHTML = `
+          <tr>
+            <td colspan="3" style="text-align: center; color: #ffcc00; font-style: italic;">
+              Showing previous session scores
+            </td>
+          </tr>
+        `;
+      } else {
+        container.innerHTML = '';
       }
       
       // Build HTML for leaderboard
@@ -942,7 +956,7 @@ const ApiService = {
         `;
       });
       
-      container.innerHTML = html;
+      container.innerHTML += html;
       
       // Update the active board buttons
       this.updateLeaderboardButtons();

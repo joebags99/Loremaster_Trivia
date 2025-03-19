@@ -511,6 +511,19 @@ h1, h2, h3, h4, .fantasy-title {
   line-height: 1.6;
 }
 
+/* Overlay Container - Add this to your CSS */
+#app {
+  position: absolute;
+  bottom: 30px;
+  right: 30px;
+  width: 350px;
+  background-color: rgba(26, 18, 40, 0.85); /* Semi-transparent background */
+  border-radius: var(--radius-medium);
+  box-shadow: 0 0 25px rgba(106, 61, 232, 0.5);
+  overflow: hidden;
+  z-index: 9000; /* High z-index to stay above stream content */
+}
+
 /* Identity Prompt Styling */
 #identity-prompt {
   position: fixed;

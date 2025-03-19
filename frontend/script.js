@@ -922,6 +922,24 @@ function improveTimerAnimation() {
         TriviaState.questionRequested = false;
         return;
       }
+
+      function fixTimerBarAnimation(duration) {
+        const timerBar = document.getElementById('timer-bar');
+        if (!timerBar) return;
+        
+        // Reset timer bar
+        timerBar.style.transition = 'none';
+        timerBar.style.width = '100%';
+        
+        // Force a reflow to ensure the style change takes effect
+        void timerBar.offsetWidth;
+        
+        // Start the animation after a small delay
+        setTimeout(() => {
+          timerBar.style.transition = `width ${duration/1000}s linear`;
+          timerBar.style.width = '0%';
+        }, 50);
+      }
       
       // Calculate duration with fallback
       const duration = data.duration || TriviaState.settings.answerTime || 30000;
@@ -1209,8 +1227,8 @@ function updateAppVisibility(timeRemaining) {
   
   if (!appContainer) return;
   
-  // Show countdown when less than 60 seconds remain
-  const showCountdownThreshold = 60000; // 60 seconds
+  // Show countdown when less than 15 seconds remain (changed from 60)
+  const showCountdownThreshold = 15000; // 15 seconds
   
   // Only show the app during active questions or during countdown threshold
   const showDuringQuestion = questionInProgress;
@@ -1220,7 +1238,7 @@ function updateAppVisibility(timeRemaining) {
   const resultDisplayPeriod = 5000; // 5 seconds
   const currentTime = Date.now();
   const questionJustEnded = TriviaState.questionEndTime && 
-                           (currentTime - TriviaState.questionEndTime < resultDisplayPeriod);
+                          (currentTime - TriviaState.questionEndTime < resultDisplayPeriod);
   
   // Debug visibility state
   console.log(`Visibility check: Question in progress: ${showDuringQuestion}, Countdown: ${showDuringCountdown}, Just ended: ${questionJustEnded}, Time remaining: ${Math.round(timeRemaining/1000)}s`);
@@ -1231,10 +1249,21 @@ function updateAppVisibility(timeRemaining) {
       console.log("Sliding in trivia container");
       appContainer.classList.add('visible');
       
-      // If this is the 60-second warning and we haven't shown the alert yet
+      // If this is the countdown warning and we haven't shown the alert yet
       if (showDuringCountdown && !TriviaState.countdownAlertShown && 
-          timeRemaining <= 60000 && timeRemaining > 50000) {
-        TimerManager.showCountdownAlert();
+          timeRemaining <= 15000 && timeRemaining > 10000) {
+        // Update countdown alert text for 15 seconds
+        if (TimerManager.showCountdownAlert) {
+          // Customize alert for 15 seconds
+          const alertOverlay = document.getElementById('countdown-alert');
+          if (alertOverlay) {
+            const alertSubtext = alertOverlay.querySelector('.alert-subtext');
+            if (alertSubtext) {
+              alertSubtext.textContent = 'Get ready - 15 seconds remaining';
+            }
+          }
+          TimerManager.showCountdownAlert();
+        }
         TriviaState.countdownAlertShown = true;
       }
     }
@@ -1330,6 +1359,10 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Call the original function
     originalDisplayQuestion.call(this, data);
+    
+    // Fix timer bar animation after original function call
+    const duration = data.duration || TriviaState.settings.answerTime || 30000;
+    fixTimerBarAnimation(duration);
   };
   
   // Also modify the transition to countdown to reset the question flag

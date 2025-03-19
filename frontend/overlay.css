@@ -25,8 +25,8 @@ html, body {
     
     /* Slide animation properties */
     transition: 
-      right 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 0.5s ease;
+    right 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.6s ease;
   }
   
   /* Visible state - activated by JavaScript */

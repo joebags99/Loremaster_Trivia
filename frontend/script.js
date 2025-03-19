@@ -1203,9 +1203,12 @@ const TimerManager = {
   },
 
   showCountdownAlert() {
+    console.log("Showing countdown alert!");
+    
     // Create overlay element if it doesn't exist
     let alertOverlay = document.getElementById('countdown-alert');
     if (!alertOverlay) {
+      console.log("Creating new alert overlay");
       alertOverlay = document.createElement('div');
       alertOverlay.id = 'countdown-alert';
       alertOverlay.className = 'countdown-alert';
@@ -1218,29 +1221,39 @@ const TimerManager = {
       `;
       document.body.appendChild(alertOverlay);
     } else {
+      console.log("Alert overlay already exists, resetting");
       // Reset any existing classes
       alertOverlay.classList.remove('exit');
-      alertOverlay.style.display = '';
+      alertOverlay.classList.remove('visible');
+      alertOverlay.style.display = 'block';
     }
     
-    // Show the overlay
+    // Force reflow before adding visible class
+    void alertOverlay.offsetWidth;
+    
+    // Show the overlay with a slightly longer delay
     setTimeout(() => {
+      console.log("Adding visible class to alert");
       alertOverlay.classList.add('visible');
-    }, 10);
+    }, 50);
     
     // Hide overlay after 4 seconds
     setTimeout(() => {
-      if (alertOverlay.classList.contains('visible')) {
+      console.log("Removing alert after timeout");
+      if (alertOverlay) {
         alertOverlay.classList.remove('visible');
         alertOverlay.classList.add('exit');
         
         // Clean up after animation completes
         setTimeout(() => {
-          alertOverlay.classList.remove('exit');
-        }, 500);
+          if (alertOverlay) {
+            alertOverlay.classList.remove('exit');
+            alertOverlay.style.display = 'none';
+          }
+        }, 800); // Slightly longer to ensure animation completes
       }
     }, 4000);
-  }
+}
 };
 
 // Store original updateCountdown function
@@ -1290,18 +1303,16 @@ function updateAppVisibility(timeRemaining) {
       // UPDATED: Changed 15000 to 30000 to show alert at 30 seconds
       if (showDuringCountdown && !TriviaState.countdownAlertShown && 
           timeRemaining <= 30000 && timeRemaining > 25000) {
-        // Show countdown alert
-        if (TimerManager.showCountdownAlert) {
-          // Customize alert for 30 seconds
-          const alertOverlay = document.getElementById('countdown-alert');
-          if (alertOverlay) {
-            const alertSubtext = alertOverlay.querySelector('.alert-subtext');
-            if (alertSubtext) {
-              alertSubtext.textContent = 'Get ready - 30 seconds remaining';
-            }
+        // Show countdown alert directly without the if condition
+        console.log("Countdown alert conditions met, showing alert");
+        const alertOverlay = document.getElementById('countdown-alert');
+        if (alertOverlay) {
+          const alertSubtext = alertOverlay.querySelector('.alert-subtext');
+          if (alertSubtext) {
+            alertSubtext.textContent = 'Get ready - 30 seconds remaining';
           }
-          TimerManager.showCountdownAlert();
         }
+        TimerManager.showCountdownAlert(); // Call directly
         TriviaState.countdownAlertShown = true;
       }
     }

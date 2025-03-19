@@ -1,0 +1,35 @@
+/* Add this CSS to a new file called overlay.css or add it to your existing style.css */
+
+/* Make the background transparent for overlay */
+html, body {
+    background-color: transparent !important;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  
+  /* Modify the app container for overlay use */
+  #app {
+    position: absolute;
+    bottom: 30px;
+    right: 30px;
+    width: 350px;
+    background-color: rgba(26, 18, 40, 0.85); /* Semi-transparent background */
+    border-radius: var(--radius-medium);
+    box-shadow: 0 0 25px rgba(106, 61, 232, 0.5);
+    overflow: hidden;
+    z-index: 9000;
+    
+    /* Remove the hidden initial state for overlay.html */
+    transform: translateY(0) !important; /* Override the default hidden position */
+    opacity: 1 !important; /* Make it visible by default */
+  }
+  
+  /* Update styles for waiting screen to ensure it's visible */
+  #waiting-screen {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    text-align: center;
+  }

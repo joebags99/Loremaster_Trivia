@@ -4,10 +4,23 @@
   <meta charset="UTF-8" />
   <title>Loremaster Trivia</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Add overlay-specific styles -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    /* Inline fallback styles in case overlay.css isn't available */
+    html, body {
+      background-color: transparent !important;
+    }
+    #app {
+      transform: translateY(0) !important;
+      opacity: 1 !important;
+    }
+  </style>
 </head>
 <body>
-  <div id="app">
+  <div id="app" class="visible">
+    <!-- Add "visible" class by default for overlay mode -->
+    
     <!-- Trivia Waiting Screen -->
     <div id="waiting-screen">
       <h2 id="waiting-text">Trivia has not started yet.</h2>
@@ -36,5 +49,12 @@
   
   <!-- External Front-End Script -->
   <script src="script.js"></script>
+  <script>
+    // Inline script to ensure visibility
+    document.addEventListener("DOMContentLoaded", function() {
+      // Make sure app is visible
+      document.getElementById('app').classList.add('visible');
+    });
+  </script>
 </body>
 </html>

@@ -75,58 +75,20 @@ function fixTimerBarAnimation(duration) {
   
   console.log('Fixing timer animation with duration:', duration);
   
-  // Clear any existing transitions or animations
-  timerBar.style.transition = 'none';
+  // Remove any existing animation/transition classes and reset
+  timerBar.className = ''; // Clear all classes
   timerBar.style.animation = 'none';
+  timerBar.style.transition = 'none';
   timerBar.style.width = '100%';
   
-  // Force multiple reflows to ensure style changes take effect
+  // Force a reflow
   void timerBar.offsetWidth;
-  void timerBar.getBoundingClientRect();
   
-  // For debugging - log the current computed width
-  const computedStyle = window.getComputedStyle(timerBar);
-  console.log('Timer bar width before animation:', computedStyle.width);
+  // Add the animation class with specific duration
+  timerBar.style.animationDuration = `${duration/1000}s`;
+  timerBar.classList.add('timer-running');
   
-  // Try multiple animation techniques
-  
-  // 1. CSS Transition
-  setTimeout(() => {
-    timerBar.style.transition = `width ${duration/1000}s linear`;
-    timerBar.style.width = '0%';
-    console.log('Timer animation started via transition');
-  }, 20);
-  
-  // 2. CSS Animation as fallback
-  setTimeout(() => {
-    // Check if width hasn't changed, suggesting transition failed
-    const newWidth = parseFloat(window.getComputedStyle(timerBar).width);
-    const originalWidth = parseFloat(computedStyle.width);
-    
-    if (Math.abs(newWidth - originalWidth) < 5) { // If barely changed
-      console.log('Transition may have failed, applying animation fallback');
-      
-      // Create and apply keyframe animation
-      const styleId = 'timer-animation-style';
-      let styleEl = document.getElementById(styleId);
-      
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = styleId;
-        document.head.appendChild(styleEl);
-      }
-      
-      styleEl.textContent = `
-        @keyframes timerShrink {
-          from { width: 100%; }
-          to { width: 0%; }
-        }
-      `;
-      
-      timerBar.style.transition = 'none';
-      timerBar.style.animation = `timerShrink ${duration/1000}s linear forwards`;
-    }
-  }, 100);
+  console.log('Timer animation applied with class-based approach');
 }
   
   // ======================================================

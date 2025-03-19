@@ -70,7 +70,7 @@ html, body {
   
   /* Fix other potential issues */
   #timer-bar {
-    width: 100% !important; /* Ensure timer bar is full width initially */
+    width: 100%; /* Remove the !important directive */
   }
   
   .difficulty-indicator {
@@ -112,4 +112,17 @@ html, body {
     #app {
       top: 10px;
     }
+  }
+
+  /* Add a keyframe animation approach instead */
+  @keyframes timerShrink {
+    from { width: 100%; }
+    to { width: 0%; }
+  }
+  
+  /* Class to apply the animation */
+  .timer-running {
+    animation-name: timerShrink;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
   }

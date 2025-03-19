@@ -1,4 +1,4 @@
-/* Add this CSS to a new file called overlay.css or add it to your existing style.css */
+/* Updated CSS for overlay positioning and animations */
 
 /* Make the background transparent for overlay */
 html, body {
@@ -8,10 +8,10 @@ html, body {
     overflow: hidden;
   }
   
-  /* Modify the app container for overlay use */
+  /* Position and style the app container */
   #app {
     position: absolute;
-    bottom: 30px;
+    bottom: 90px; /* Increased from 30px to 90px to position higher */
     right: 30px;
     width: 350px;
     background-color: rgba(26, 18, 40, 0.85); /* Semi-transparent background */
@@ -20,16 +20,31 @@ html, body {
     overflow: hidden;
     z-index: 9000;
     
-    /* Remove the hidden initial state for overlay.html */
-    transform: translateY(0) !important; /* Override the default hidden position */
-    opacity: 1 !important; /* Make it visible by default */
+    /* Default hidden state with smooth transition */
+    transform: translateY(150%); /* Start completely below the visible area */
+    opacity: 0;
+    
+    /* Slide animation properties */
+    transition: 
+      transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), /* Ease-out-back - gives a nice bounce */
+      opacity 0.5s ease;
   }
   
-  /* Update styles for waiting screen to ensure it's visible */
-  #waiting-screen {
-    display: flex !important;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px;
-    text-align: center;
+  /* Visible state - activated by JavaScript */
+  #app.visible {
+    transform: translateY(0); /* Slide up to final position */
+    opacity: 1;
+  }
+  
+  /* Ensure content inside app is properly positioned */
+  #waiting-screen, #trivia-ended-screen, #quiz-container {
+    padding: 15px;
+  }
+  
+  /* Additional styles for responsiveness */
+  @media screen and (max-height: 600px) {
+    #app {
+      bottom: 70px; /* Adjust for smaller screens */
+      max-height: 70vh; /* Prevent overflow on small screens */
+    }
   }

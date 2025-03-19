@@ -4,24 +4,32 @@
   <meta charset="UTF-8" />
   <title>Loremaster Trivia</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- Add overlay-specific styles -->
   <link rel="stylesheet" href="overlay.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    /* Inline fallback styles in case overlay.css isn't available */
+    /* Critical fallback styles to ensure proper behavior */
     html, body {
       background-color: transparent !important;
     }
     #app {
-      transform: translateY(0) !important;
+      position: fixed !important;
+      top: 30px !important;
+      right: -360px !important;
+      opacity: 0 !important;
+      transition: right 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s ease !important;
+    }
+    #app.visible {
+      right: 40px !important;
       opacity: 1 !important;
+    }
+    /* Ensure content fits */
+    #waiting-screen, #trivia-ended-screen, #quiz-container {
+      max-height: none !important;
     }
   </style>
 </head>
 <body>
-  <div id="app" class="visible">
-    <!-- Add "visible" class by default for overlay mode -->
-    
+  <div id="app">
     <!-- Trivia Waiting Screen -->
     <div id="waiting-screen">
       <h2 id="waiting-text">Trivia has not started yet.</h2>
@@ -50,12 +58,40 @@
   
   <!-- External Front-End Script -->
   <script src="script.js"></script>
+  
   <script>
-    // Inline script to ensure visibility
-    document.addEventListener("DOMContentLoaded", function() {
-      // Make sure app is visible
-      document.getElementById('app').classList.add('visible');
-    });
+    // Immediate execution script to ensure proper overlay behavior
+    (function() {
+      // Ensure app starts hidden
+      const app = document.getElementById('app');
+      if (app) {
+        app.classList.remove('visible');
+        app.style.right = '-360px';
+      }
+      
+      // Add a class to body for easier targeting
+      document.body.classList.add('trivia-overlay');
+      
+      // Add visibility check after page load
+      window.addEventListener('load', function() {
+        // Double-check visibility state after 1 second
+        setTimeout(function() {
+          const app = document.getElementById('app');
+          const shouldBeVisible = window.questionInProgress || 
+                                (window.TriviaState && 
+                                 window.TriviaState.nextQuestionTime && 
+                                 window.TriviaState.nextQuestionTime - Date.now() <= 60000);
+          
+          if (app) {
+            if (shouldBeVisible && !app.classList.contains('visible')) {
+              app.classList.add('visible');
+            } else if (!shouldBeVisible && app.classList.contains('visible')) {
+              app.classList.remove('visible');
+            }
+          }
+        }, 1000);
+      });
+    })();
   </script>
 </body>
 </html>

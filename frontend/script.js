@@ -757,12 +757,6 @@ function improveTimerAnimation() {
   // Start observing the timer
   observer.observe(timerBar, { attributes: true });
 }
-
-// Call initialization when document is ready
-document.addEventListener('DOMContentLoaded', () => {
-  // Initialize magical effects only after UI is ready
-  setTimeout(initMagicalEffects, 500);
-});
   
   // ======================================================
   // 5. USER MANAGEMENT
@@ -1215,14 +1209,21 @@ function updateAppVisibility(timeRemaining) {
   
   if (!appContainer) return;
   
-  // Only show the app during active questions or during the last 60 seconds before a new question
-  const showDuringQuestion = questionInProgress;
-  const showDuringCountdown = timeRemaining <= 60000 && timeRemaining > 0;
+  // Show countdown when less than 60 seconds remain
+  const showCountdownThreshold = 60000; // 60 seconds
   
-  // After a question finishes, keep it visible for 5 seconds to show results
+  // Only show the app during active questions or during countdown threshold
+  const showDuringQuestion = questionInProgress;
+  const showDuringCountdown = timeRemaining <= showCountdownThreshold && timeRemaining > 0;
+  
+  // After a question finishes, keep it visible for result display period
+  const resultDisplayPeriod = 5000; // 5 seconds
   const currentTime = Date.now();
   const questionJustEnded = TriviaState.questionEndTime && 
-                           (currentTime - TriviaState.questionEndTime < 5000);
+                           (currentTime - TriviaState.questionEndTime < resultDisplayPeriod);
+  
+  // Debug visibility state
+  console.log(`Visibility check: Question in progress: ${showDuringQuestion}, Countdown: ${showDuringCountdown}, Just ended: ${questionJustEnded}, Time remaining: ${Math.round(timeRemaining/1000)}s`);
   
   if (showDuringQuestion || showDuringCountdown || questionJustEnded) {
     // Show the app with slide-in animation
@@ -1245,6 +1246,7 @@ function updateAppVisibility(timeRemaining) {
     }
   }
 }
+
 
 /**
  * Handle countdown update message
@@ -1291,42 +1293,66 @@ function handleTriviaEnd() {
     TimerManager.checkForNextQuestion();
   }, 1000);
   
-  // Initialize UI
-  document.addEventListener("DOMContentLoaded", () => {
-    initializeTwitchExtension();
+  // Single consolidated DOMContentLoaded handler
+document.addEventListener("DOMContentLoaded", () => {
+  // Initialize Twitch extension
+  initializeTwitchExtension();
+  
+  // Initialize app visibility
+  const appContainer = document.getElementById('app');
+  if (appContainer) {
+    // Force initial state to be hidden
+    appContainer.classList.remove('visible');
+    appContainer.style.right = '-360px'; // Ensure it's off-screen
     
-    // Initialize app visibility
+    // Listen for CSS transition end to ensure it's fully hidden
+    appContainer.addEventListener('transitionend', function(e) {
+      if (!appContainer.classList.contains('visible')) {
+        // Extra assurance it's fully off-screen when hidden
+        appContainer.style.right = '-360px';
+      }
+    });
+  }
+  
+  // Store original displayQuestion function
+  const originalDisplayQuestion = QuestionManager.displayQuestion;
+  
+  // Override with enhanced version that ensures app visibility
+  QuestionManager.displayQuestion = function(data) {
+    // Set question in progress flag
+    questionInProgress = true;
+    
+    // Show the app container for questions
     const appContainer = document.getElementById('app');
     if (appContainer) {
-      // Start hidden when loaded
-      appContainer.classList.remove('visible');
+      appContainer.classList.add('visible');
     }
     
-    // Store original displayQuestion function
-    const originalDisplayQuestion = QuestionManager.displayQuestion;
+    // Call the original function
+    originalDisplayQuestion.call(this, data);
+  };
+  
+  // Also modify the transition to countdown to reset the question flag
+  const originalTransitionToCountdown = TimerManager.transitionToCountdown;
+  TimerManager.transitionToCountdown = function(intervalTime) {
+    // Reset question in progress flag
+    questionInProgress = false;
     
-    // Override with enhanced version that ensures app visibility
-    QuestionManager.displayQuestion = function(data) {
-      // Set question in progress flag
-      questionInProgress = true;
-      
-      // Show the app container for questions
-      const appContainer = document.getElementById('app');
-      if (appContainer) {
-        appContainer.classList.add('visible');
-      }
-      
-      // Call the original function
-      originalDisplayQuestion.call(this, data);
-    };
+    // Update visibility based on new interval time
+    updateAppVisibility(intervalTime);
     
-    // Also modify the transition to countdown to reset the question flag
-    const originalTransitionToCountdown = TimerManager.transitionToCountdown;
-    TimerManager.transitionToCountdown = function(intervalTime) {
-      // Reset question in progress flag
-      questionInProgress = false;
-      
-      // Call original function
-      originalTransitionToCountdown.call(this, intervalTime);
-    };
-  });
+    // Call original function
+    originalTransitionToCountdown.call(this, intervalTime);
+  };
+  
+  // Initialize magical effects after a short delay to ensure UI is ready
+  setTimeout(initMagicalEffects, 500);
+  
+  // Check initial visibility state after everything is initialized
+  setTimeout(() => {
+    if (TriviaState && TriviaState.nextQuestionTime) {
+      const timeRemaining = TriviaState.nextQuestionTime - Date.now();
+      updateAppVisibility(timeRemaining);
+    }
+  }, 1000);
+});

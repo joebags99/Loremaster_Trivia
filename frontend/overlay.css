@@ -10,50 +10,106 @@ html, body {
   
   /* Position and style the app container */
   #app {
-    position: absolute;
-    top: 30px; /* Changed from bottom: 90px to position at top */
-    right: 30px;
-    width: 350px;
-    background-color: rgba(26, 18, 40, 0.85); /* Semi-transparent background */
-    border-radius: var(--radius-medium);
+    position: fixed; /* Use fixed instead of absolute for better positioning */
+    top: 30px;
+    width: 350px; /* Base width */
+    background-color: rgba(26, 18, 40, 0.85);
+    border-radius: var(--radius-medium, 12px);
     box-shadow: 0 0 25px rgba(106, 61, 232, 0.5);
     overflow: hidden;
     z-index: 9000;
     
-    /* Default hidden state with smooth transition */
-    transform: translateY(-150%); /* Start above the visible area for top position */
+    /* Default hidden state - start off-screen to the right */
+    right: -360px; /* Start off-screen */
     opacity: 0;
     
     /* Slide animation properties */
     transition: 
-      transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), /* Ease-out-back - gives a nice bounce */
+      right 0.6s cubic-bezier(0.16, 1, 0.3, 1),
       opacity 0.5s ease;
   }
   
   /* Visible state - activated by JavaScript */
   #app.visible {
-    transform: translateY(0); /* Slide down to final position */
+    right: 40px; /* Slide in to this position */
     opacity: 1;
   }
   
-  /* Ensure content inside app is properly positioned */
+  /* Ensure content inside app is properly positioned and scaled */
   #waiting-screen, #trivia-ended-screen, #quiz-container {
     padding: 15px;
+    max-height: none !important; /* Remove height constraint */
+    width: 100%;
   }
   
-  /* Additional styles for responsiveness */
+  /* Responsive Typography */
+  #question-text {
+    font-size: clamp(16px, 5vw, 22px) !important;
+    line-height: 1.4 !important;
+    word-wrap: break-word;
+  }
+  
+  .choice-button {
+    font-size: clamp(14px, 4vw, 18px) !important;
+    padding: clamp(8px, 2vw, 15px) !important;
+    min-height: clamp(40px, 10vw, 60px) !important;
+  }
+  
+  #waiting-text {
+    font-size: clamp(16px, 5vw, 24px) !important;
+  }
+  
+  #countdown-timer {
+    font-size: clamp(20px, 6vw, 32px) !important;
+    padding: clamp(8px, 2vw, 12px) clamp(15px, 3vw, 24px) !important;
+  }
+  
+  #user-score {
+    font-size: clamp(14px, 4vw, 20px) !important;
+  }
+  
+  /* Fix other potential issues */
+  #timer-bar {
+    width: 100% !important; /* Ensure timer bar is full width initially */
+  }
+  
+  .difficulty-indicator {
+    font-size: clamp(0.7rem, 2vw, 0.9rem) !important;
+  }
+  
+  /* Adjust container based on screen size */
   @media screen and (max-width: 480px) {
     #app {
-      top: 15px; /* Less space on small screens */
-      right: 15px;
-      width: calc(100% - 30px); /* Responsive width on very small screens */
-      max-width: 350px; /* Maximum width */
+      top: 15px;
+      width: 80%; /* More responsive width */
+      max-width: 320px;
+    }
+    
+    #app.visible {
+      right: 10px; /* Less space from edge on small screens */
+    }
+    
+    .choice-button {
+      width: 100% !important; /* Full width buttons on small screens */
+      margin: 4px 0 !important;
     }
   }
   
-  @media screen and (max-height: 600px) {
+  /* Very small screens */
+  @media screen and (max-width: 320px) {
     #app {
-      top: 15px; /* Less space from top on small height screens */
-      max-height: 70vh; /* Prevent overflow on small screens */
+      top: 5px;
+      width: 90%;
+    }
+    
+    #waiting-screen, #trivia-ended-screen, #quiz-container {
+      padding: 10px;
+    }
+  }
+  
+  /* Fix overlay position for touch devices */
+  @media (pointer: coarse) {
+    #app {
+      top: 10px;
     }
   }

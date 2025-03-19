@@ -70,6 +70,8 @@ function fixTimerBarAnimation(duration) {
   const timerBar = document.getElementById('timer-bar');
   if (!timerBar) return;
   
+  console.log('Fixing timer animation with duration:', duration);
+  
   // Reset timer bar
   timerBar.style.transition = 'none';
   timerBar.style.width = '100%';
@@ -77,11 +79,14 @@ function fixTimerBarAnimation(duration) {
   // Force a reflow to ensure the style change takes effect
   void timerBar.offsetWidth;
   
-  // Start the animation after a small delay
-  setTimeout(() => {
-    timerBar.style.transition = `width ${duration/1000}s linear`;
-    timerBar.style.width = '0%';
-  }, 50);
+  // Enhanced approach: use requestAnimationFrame for better timing
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      timerBar.style.transition = `width ${duration/1000}s linear`;
+      timerBar.style.width = '0%';
+      console.log('Timer animation started');
+    });
+  });
 }
   
   // ======================================================
@@ -977,10 +982,6 @@ function improveTimerAnimation() {
       UI.questionText.textContent = data.question;
       UI.choicesContainer.innerHTML = "";
       
-      // Reset timer bar
-      UI.timerBar.style.transition = "none";
-      UI.timerBar.style.width = "100%";
-      
       // Remove existing difficulty indicators
       document.querySelectorAll('.difficulty-indicator').forEach(el => el.remove());
       
@@ -1000,12 +1001,6 @@ function improveTimerAnimation() {
         button.onclick = () => this.handleAnswerSelection(button, choice, data.correctAnswer);
         UI.choicesContainer.appendChild(button);
       });
-      
-      // Start timer animation after a short delay
-      setTimeout(() => {
-        UI.timerBar.style.transition = `width ${duration / 1000}s linear`;
-        UI.timerBar.style.width = "0%";
-      }, 100);
       
       // Show question UI
       UI.setUIState("question");

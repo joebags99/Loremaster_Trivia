@@ -11,34 +11,41 @@
  * Global state management for the trivia application
  */
 const TriviaState = {
-    userId: null,                     // User's Twitch ID
-    username: null,                   // User's Twitch username
-    triviaActive: false,              // Whether trivia is currently active
-    questionStartTime: null,          // When the current question started
-    nextQuestionTime: null,           // When the next question will appear
-    questionRequested: false,         // Flag to prevent duplicate question requests
-    lastAnswerData: null,             // Data from last answer for display
-    countdownUpdatedByPubSub: false,  // Flag to track PubSub countdown updates
-    currentQuestionDifficulty: null,  // Current question difficulty level
-    currentQuestionDuration: null,    // Current question duration
-    countdownAlertShown: false,       // Flag to track if 60-second alert was shown
-    
-    // Default settings
-    settings: {
-      answerTime: 30000,     // Default: 30 seconds
-      intervalTime: 600000   // Default: 10 minutes
-    },
-    
-    /**
-     * Determines API base URL based on environment
-     * @returns {string} Base URL for API calls
-     */
-    getApiBaseUrl() {
-      return window.location.hostname.includes('ext-twitch.tv')
-        ? 'https://loremaster-trivia.com'
-        : '';
-    }
-  };
+  userId: null,                     // User's Twitch ID
+  username: null,                   // User's Twitch username
+  triviaActive: false,              // Whether trivia is currently active
+  questionStartTime: null,          // When the current question started
+  questionEndTime: null,            // When the current question ended
+  nextQuestionTime: null,           // When the next question will appear
+  questionRequested: false,         // Flag to prevent duplicate question requests
+  lastAnswerData: null,             // Data from last answer for display
+  countdownUpdatedByPubSub: false,  // Flag to track PubSub countdown updates
+  currentQuestionDifficulty: null,  // Current question difficulty level
+  currentQuestionDuration: null,    // Current question duration
+  countdownAlertShown: false,       // Flag to track if 60-second alert was shown
+  
+  // Visibility control settings
+  visibilitySettings: {
+    countdownShowSeconds: 60,       // Show overlay this many seconds before question
+    resultDisplaySeconds: 5         // Keep overlay visible this many seconds after question
+  },
+  
+  // Default settings
+  settings: {
+    answerTime: 30000,              // Default: 30 seconds
+    intervalTime: 600000            // Default: 10 minutes
+  },
+  
+  /**
+   * Determines API base URL based on environment
+   * @returns {string} Base URL for API calls
+   */
+  getApiBaseUrl() {
+    return window.location.hostname.includes('ext-twitch.tv')
+      ? 'https://loremaster-trivia.com'
+      : '';
+  }
+};
   
   /**
    * Cache DOM elements to avoid repeated lookups
@@ -990,46 +997,52 @@ document.addEventListener('DOMContentLoaded', () => {
       // Submit answer to server
       UserManager.submitAnswer(button, selectedChoice, correctAnswer);
     },
-    
+
     /**
-     * Reveal correct answer
-     * @param {string} correctAnswer - Correct answer text
-     */
-    revealCorrectAnswer(correctAnswer) {
-      const buttons = document.querySelectorAll(".choice-button");
-      
-      // Mark each button as correct or wrong
-      buttons.forEach(btn => {
-        if (btn.textContent === correctAnswer) {
-          btn.classList.add("correct");
-        } else if (btn.dataset.selected === "true") {
-          btn.classList.remove("selected");
-          btn.classList.add("wrong");
-        } else {
-          btn.classList.add("wrong");
-        }
-        btn.disabled = true;
-      });
-      
-      // Show points info if we have it
-      if (TriviaState.lastAnswerData && TriviaState.lastAnswerData.pointsEarned > 0) {
-        const pointsInfo = document.createElement("div");
-        pointsInfo.className = "points-info";
-        pointsInfo.innerHTML = `
-          <span class="points">+${TriviaState.lastAnswerData.pointsEarned} points!</span>
-          <span class="time-bonus">${TriviaState.lastAnswerData.timePercentage}% time bonus</span>
-        `;
-        TriviaState.lastAnswerData.button.parentNode.appendChild(pointsInfo);
-        
-        // Clear the data
-        TriviaState.lastAnswerData = null;
-      }
+ * Reveal correct answer
+ * @param {string} correctAnswer - Correct answer text
+ */
+revealCorrectAnswer(correctAnswer) {
+  // Store question end time for visibility control
+  TriviaState.questionEndTime = Date.now();
+  
+  const buttons = document.querySelectorAll(".choice-button");
+  
+  // Mark each button as correct or wrong
+  buttons.forEach(btn => {
+    if (btn.textContent === correctAnswer) {
+      btn.classList.add("correct");
+    } else if (btn.dataset.selected === "true") {
+      btn.classList.remove("selected");
+      btn.classList.add("wrong");
+    } else {
+      btn.classList.add("wrong");
     }
-  };
+    btn.disabled = true;
+  });
+  
+  // Show points info if we have it
+  if (TriviaState.lastAnswerData && TriviaState.lastAnswerData.pointsEarned > 0) {
+    const pointsInfo = document.createElement("div");
+    pointsInfo.className = "points-info";
+    pointsInfo.innerHTML = `
+      <span class="points">+${TriviaState.lastAnswerData.pointsEarned} points!</span>
+      <span class="time-bonus">${TriviaState.lastAnswerData.timePercentage}% time bonus</span>
+    `;
+    TriviaState.lastAnswerData.button.parentNode.appendChild(pointsInfo);
+    
+    // Clear the data
+    TriviaState.lastAnswerData = null;
+  }
+}
+};
   
 // ======================================================
 // 7. TIMER MANAGEMENT
 // ======================================================
+
+// Initialize question progress state variable
+let questionInProgress = false;
 
 /**
  * Countdown and timer management
@@ -1061,26 +1074,34 @@ const TimerManager = {
    * @param {string} correctAnswer - Correct answer text
    */
   startQuestionTimer(duration, correctAnswer) {
-    // Store current question timestamp to verify timer validity later
-    const currentQuestionTime = TriviaState.questionStartTime;
+  // Store current question timestamp to verify timer validity later
+  const currentQuestionTime = TriviaState.questionStartTime;
+  
+  // Clear any previous question end time
+  TriviaState.questionEndTime = null;
+  
+  // Set question in progress flag
+  questionInProgress = true;
+  
+  setTimeout(() => {
+    // Check if we're still showing the same question
+    if (TriviaState.questionStartTime !== currentQuestionTime) {
+      return;
+    }
     
+    // Reveal answer
+    QuestionManager.revealCorrectAnswer(correctAnswer);
+    
+    // Reset question in progress flag
+    questionInProgress = false;
+    
+    // Schedule transition back to countdown
     setTimeout(() => {
-      // Check if we're still showing the same question
-      if (TriviaState.questionStartTime !== currentQuestionTime) {
-        return;
-      }
-      
-      
-      // Reveal answer
-      QuestionManager.revealCorrectAnswer(correctAnswer);
-      
-      // Schedule transition back to countdown
-      setTimeout(() => {
-        const nextInterval = TriviaState.settings.intervalTime || 600000;
-        this.transitionToCountdown(nextInterval);
-      }, 5000);
-    }, duration);
-  },
+      const nextInterval = TriviaState.settings.intervalTime || 600000;
+      this.transitionToCountdown(nextInterval);
+    }, TriviaState.visibilitySettings.resultDisplaySeconds * 1000);
+  }, duration);
+},
   
   /**
    * Transition to countdown screen
@@ -1192,20 +1213,35 @@ TimerManager.updateCountdown = function(timeRemaining) {
 function updateAppVisibility(timeRemaining) {
   const appContainer = document.getElementById('app');
   
-  // Show app when there's 30 seconds or less remaining
-  if (appContainer) {
-    if (timeRemaining <= 30000 && timeRemaining > 0) {
-      // Show the app with slide-in animation
-      if (!appContainer.classList.contains('visible')) {
-        console.log("Sliding in trivia container (30 seconds remaining)");
-        appContainer.classList.add('visible');
+  if (!appContainer) return;
+  
+  // Only show the app during active questions or during the last 60 seconds before a new question
+  const showDuringQuestion = questionInProgress;
+  const showDuringCountdown = timeRemaining <= 60000 && timeRemaining > 0;
+  
+  // After a question finishes, keep it visible for 5 seconds to show results
+  const currentTime = Date.now();
+  const questionJustEnded = TriviaState.questionEndTime && 
+                           (currentTime - TriviaState.questionEndTime < 5000);
+  
+  if (showDuringQuestion || showDuringCountdown || questionJustEnded) {
+    // Show the app with slide-in animation
+    if (!appContainer.classList.contains('visible')) {
+      console.log("Sliding in trivia container");
+      appContainer.classList.add('visible');
+      
+      // If this is the 60-second warning and we haven't shown the alert yet
+      if (showDuringCountdown && !TriviaState.countdownAlertShown && 
+          timeRemaining <= 60000 && timeRemaining > 50000) {
+        TimerManager.showCountdownAlert();
+        TriviaState.countdownAlertShown = true;
       }
-    } else if (timeRemaining <= 0 || timeRemaining > 30000) {
-      // Hide when no countdown is active or when more than 30 seconds
-      if (appContainer.classList.contains('visible') && !questionInProgress) {
-        console.log("Sliding out trivia container");
-        appContainer.classList.remove('visible');
-      }
+    }
+  } else {
+    // Hide when no countdown is active and no question is in progress
+    if (appContainer.classList.contains('visible')) {
+      console.log("Sliding out trivia container");
+      appContainer.classList.remove('visible');
     }
   }
 }

@@ -11,7 +11,7 @@ html, body {
   /* Position and style the app container */
   #app {
     position: absolute;
-    bottom: 90px; /* Increased from 30px to 90px to position higher */
+    top: 30px; /* Changed from bottom: 90px to position at top */
     right: 30px;
     width: 350px;
     background-color: rgba(26, 18, 40, 0.85); /* Semi-transparent background */
@@ -21,7 +21,7 @@ html, body {
     z-index: 9000;
     
     /* Default hidden state with smooth transition */
-    transform: translateY(150%); /* Start completely below the visible area */
+    transform: translateY(-150%); /* Start above the visible area for top position */
     opacity: 0;
     
     /* Slide animation properties */
@@ -32,7 +32,7 @@ html, body {
   
   /* Visible state - activated by JavaScript */
   #app.visible {
-    transform: translateY(0); /* Slide up to final position */
+    transform: translateY(0); /* Slide down to final position */
     opacity: 1;
   }
   
@@ -42,9 +42,18 @@ html, body {
   }
   
   /* Additional styles for responsiveness */
+  @media screen and (max-width: 480px) {
+    #app {
+      top: 15px; /* Less space on small screens */
+      right: 15px;
+      width: calc(100% - 30px); /* Responsive width on very small screens */
+      max-width: 350px; /* Maximum width */
+    }
+  }
+  
   @media screen and (max-height: 600px) {
     #app {
-      bottom: 70px; /* Adjust for smaller screens */
+      top: 15px; /* Less space from top on small height screens */
       max-height: 70vh; /* Prevent overflow on small screens */
     }
   }
